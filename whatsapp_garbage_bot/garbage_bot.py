@@ -18,7 +18,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 from neonize.aioze.client import NewAClient
 from neonize.aioze.events import ConnectedEv, MessageEv
 from neonize.proto.Neonize_pb2 import JID
-from xhtml2pdf import HTML
 from xhtml2pdf.document import pisaDocument
 
 # --- CLASSE CONFIGURAZIONE GLOBALE ---
@@ -781,22 +780,18 @@ class CalendarGenerator:
                 calendario_data
             )
             
-            # Converti in PDF
-            from io import BytesIO
-            from xhtml2pdf import HTML
+            # Converti in PDF con pisaDocument
             pdf_buffer = BytesIO()
+            pisaStatus = pisaDocument(
+                BytesIO(html_content.encode('utf-8')),
+                pdf_buffer
+            )
             
-            try:
-                HTML(string=html_content).write_pdf(pdf_buffer)
-                return pdf_buffer.getvalue()
-            except:
-                # Fallback: usa pisa
-                from xhtml2pdf.document import pisaDocument
-                pisaStatus = pisaDocument(
-                    BytesIO(html_content.encode('utf-8')),
-                    pdf_buffer
-                )
-                return pdf_buffer.getvalue() if not pisaStatus.err else None
+            if pisaStatus.err:
+                self.log.error(f"Errore PDF generation: {pisaStatus.err}")
+                return None
+            
+            return pdf_buffer.getvalue()
                 
         except Exception as e:
             self.log.error(f"Errore generazione PDF: {e}")
@@ -1241,26 +1236,25 @@ class GarbageBot:
                     pdf_bytes = await self.calendar_gen.generate_pdf(sheet_url)
                     
                     if pdf_bytes:
-                        import tempfile
-                        import os
-                        
-                        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, prefix="calendario_") as tmp:
-                            tmp.write(pdf_bytes)
-                            tmp_path = tmp.name
-                        
-                        try:
-                            # Invia sulla chat privata del bot
-                            if self.me_user:
-                                bot_jid = JID()
-                                bot_jid.User = self.me_user
-                                caption = "📅 *Calendario Rigenerato*\n\nNuovo calendario creato in base alle condomini attuali."
-                                await self.client.send_message(bot_jid, caption)
-                                self.log.info("✅ PDF inviato sulla chat privata")
+                        # Invia sulla chat privata del bot
+                        if self.me_user:
+                            bot_jid = JID()
+                            bot_jid.User = self.me_user
+                            caption = "📅 *Calendario Rigenerato*\n\nNuovo calendario creato in base alle condomini attuali."
                             
-                            await self._safe_reply("✅ *Calendario Rigenerato!*\n\nIl nuovo calendario è stato creato con i condomini attuali e il PDF è stato inviato in privata.", message, "/calendario")
-                        finally:
-                            if os.path.exists(tmp_path):
-                                os.remove(tmp_path)
+                            # Costruisci il messaggio documento
+                            doc_msg = self.client.build_document_message(
+                                pdf_bytes,
+                                filename="Calendario_Turni.pdf",
+                                caption=caption,
+                                mime_type="application/pdf"
+                            )
+                            
+                            # Invia il documento
+                            await self.client.send_message(bot_jid, message=doc_msg)
+                            self.log.info("✅ PDF inviato sulla chat privata")
+                        
+                        await self._safe_reply("✅ *Calendario Rigenerato!*\n\nIl nuovo calendario è stato creato con i condomini attuali e il PDF è stato inviato in privata.", message, "/calendario")
                     else:
                         await self._safe_reply("⚠️ Calendario rigenerato ma errore nella generazione del PDF.", message, "/calendario")
                 else:
@@ -1290,26 +1284,21 @@ class GarbageBot:
                     await self._safe_reply("❌ Errore nella generazione del PDF.", message, "/calendario")
                     return
                 
-                # Salva temporaneamente e invia
-                import tempfile
-                import os
+                # Costruisci il messaggio documento
+                caption = "📅 *Calendario Turni - Stampa e Affiggere*"
+                doc_msg = self.client.build_document_message(
+                    pdf_bytes,
+                    filename="Calendario_Turni.pdf",
+                    caption=caption,
+                    mime_type="application/pdf"
+                )
                 
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, prefix="calendario_") as tmp:
-                    tmp.write(pdf_bytes)
-                    tmp_path = tmp.name
-                
-                try:
-                    # Invia il PDF nel gruppo
-                    caption = "📅 *Calendario Turni - Stampa e Affiggere*"
-                    await self.client.send_message(
-                        message.Info.MessageSource.Chat,
-                        caption
-                    )
-                    self.log.info(f"✅ PDF calendario inviato nel gruppo")
-                    
-                finally:
-                    if os.path.exists(tmp_path):
-                        os.remove(tmp_path)
+                # Invia il PDF nel gruppo
+                await self.client.send_message(
+                    message.Info.MessageSource.Chat,
+                    message=doc_msg
+                )
+                self.log.info(f"✅ PDF calendario inviato nel gruppo")
                         
             except Exception as e:
                 self.log.error(f"❌ Errore invio PDF: {e}")
@@ -1397,42 +1386,25 @@ class GarbageBot:
                 self.log.error("❌ PDF non generato")
                 return
             
-            # 2. Prepara il file per WhatsApp
-            # Nota: Neonize supporta l'invio di file/media tramite upload
-            # Salva temporaneamente il PDF e invialo
-            import tempfile
-            import os
-            
-            with tempfile.NamedTemporaryFile(
-                suffix=".pdf", 
-                delete=False, 
-                prefix="calendario_"
-            ) as tmp:
-                tmp.write(pdf_bytes)
-                tmp_path = tmp.name
-            
-            try:
-                # 3. Invia sulla chat privata del bot (usa me_user)
-                if self.me_user:
-                    bot_jid = JID()
-                    bot_jid.User = self.me_user
-                    
-                    # Invia messaggio con PDF
-                    caption = "📅 *Calendario Turni Aggiornato*\n\nNuovo ciclo generato e pronto per la stampa."
-                    
-                    await self.client.send_message(
-                        bot_jid,
-                        caption
-                    )
-                    
-                    self.log.info(f"✅ PDF inviato sulla chat privata del bot")
-                else:
-                    self.log.warning("⚠️ JID bot non disponibile")
-                    
-            finally:
-                # Pulizia
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+            # 2. Invia sulla chat privata del bot (usa me_user)
+            if self.me_user:
+                bot_jid = JID()
+                bot_jid.User = self.me_user
+                
+                # Costruisci il messaggio documento con il PDF
+                caption = "📅 *Calendario Turni Aggiornato*\n\nNuovo ciclo generato e pronto per la stampa."
+                doc_msg = self.client.build_document_message(
+                    pdf_bytes,
+                    filename="Calendario_Turni.pdf",
+                    caption=caption,
+                    mime_type="application/pdf"
+                )
+                
+                # Invia il documento
+                await self.client.send_message(bot_jid, message=doc_msg)
+                self.log.info(f"✅ PDF inviato sulla chat privata del bot")
+            else:
+                self.log.warning("⚠️ JID bot non disponibile")
                     
         except Exception as e:
             self.log.error(f"❌ Errore invio PDF: {e}")

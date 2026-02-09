@@ -8,7 +8,8 @@
   "boot": "always",
   "ports": {},
   "map": [
-    "config:rw"
+    "config:rw",
+    "data:rw"
   ],
   "options": {},
   "schema": {},
