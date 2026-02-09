@@ -1,0 +1,9 @@
+name: "WhatsApp Bot"
+version: "1.0"
+slug: "whatsapp_bot"
+description: "Il mio bot Python con neonize"
+arch:
+  - aarch64
+  - armhf
+  - armv7
+startup: application

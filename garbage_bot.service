@@ -1,0 +1,13 @@
+[Unit]
+Description=WhatsApp Reminder Bot
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/whatsapp_bot
+ExecStart=/home/whatsapp_bot/venv/bin/python /home/whatsapp_bot/garbage_bot.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
