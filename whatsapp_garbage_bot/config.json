@@ -1,0 +1,19 @@
+{
+  "name": "WhatsApp Garbage Bot",
+  "version": "1.0.0",
+  "slug": "whatsapp_garbage_bot",
+  "description": "Bot WhatsApp per gestione turni spazzatura e calendario con integrazione Google Sheets",
+  "arch": ["aarch64", "armhf", "armv7", "amd64"],
+  "startup": "application",
+  "boot": "always",
+  "ports": {},
+  "map": [
+    "config:rw"
+  ],
+  "options": {},
+  "schema": {},
+  "homeassistant": "2024.1.0",
+  "host_network": false,
+  "init": false,
+  "services": []
+}
