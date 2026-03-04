@@ -8,13 +8,36 @@ Repository ufficiale di custom add-ons per [Home Assistant](https://www.home-ass
 Bot WhatsApp per gestione automatica turni spazzatura e calendario condominiale.
 
 **Caratteristiche:**
-- 📅 Monitoraggio automatico calendario
-- 📱 Comandi WhatsApp intuitivi
-- 📊 Integrazione Google Sheets
-- 🔔 Promemoria giornalieri turni
-- 🏠 Perfetto per condomini
+- 📅 Gestione automatica calendario turni su Google Sheets
+- 📱 Comandi WhatsApp intuitivi e reattivi
+- 📊 Integrazione completa con Google Sheets
+- 🔔 Promemoria giornalieri via WhatsApp
+- 📝 Generazione PDF del calendario
+- 🔄 Gestione automatica cicli di turnazioni
+- ⚙️ Comandi amministrativi per configurazione
 
 [Documenti dell'add-on](whatsapp_garbage_bot/INSTALL_HOMEASSISTANT.md)
+
+## 🎯 Comandi Disponibili
+
+### Comandi Generali
+- **`/oggi`** - Mostra chi è di turno oggi
+- **`/prossimi`** - Visualizza i prossimi 10 turni
+- **`/regole`** - Leggi il regolamento rifiuti
+- **`/calendario`** - Scarica il PDF del calendario aggiornato
+- **`/info`** - Mostra l'aiuto con tutti i comandi
+
+### Comandi Amministratore (Gruppo)
+- **`/attiva <link_sheet>`** - Attiva il bot nel gruppo (richiede link Google Sheets)
+- **`/disattiva`** - Disattiva il bot nel gruppo
+- **`/genera`** - Corregge il ciclo corrente e lo rigenera da zero
+- **`/genera nuovi`** - Crea una nuova turnazione partendo dalla fine del ciclo attuale
+
+### Comandi Superadmin (Chat Privata)
+- **`/config <link_gruppo> <link_sheet>`** - Configura il bot via link
+- **`/config_check`** - Lista tutte le configurazioni attive
+- **`/config_reset <numero>`** - Rimuove una configurazione
+- **`/db_reset`** - Pulisce e ricrea il database
 
 ## 🔧 Come Installare
 
@@ -24,6 +47,20 @@ Bot WhatsApp per gestione automatica turni spazzatura e calendario condominiale.
 4. Clicca **Install**
 
 Per ulteriori informazioni, vedi la [documentazione completa](whatsapp_garbage_bot/INSTALL_HOMEASSISTANT.md).
+
+## ⚙️ Come Funziona
+
+1. **Configurazione Iniziale**: Un amministratore usa `/attiva <link_sheet>` per collegare un Google Sheets al gruppo
+2. **Cicli Automatici**: Il bot gestisce automaticamente cicli di turnazioni settimanali
+3. **Promemoria**: Ogni giorno alle 09:00 invia un promemoria WhatsApp al condomino di turno
+4. **Regenerazione**: Quando un ciclo scade (<30 giorni), crea automaticamente `NuovoCalendario`
+5. **Gestione Manuale**: Usa `/genera` per correggere o `/genera nuovi` per rigenerare
+
+### Struttura Google Sheets Richiesta
+
+- **Fogli**: `Calendario` (attuale), `NuovoCalendario` (prossimo, opzionale), `Impostazioni` (elenco condomini), `Regole` (regolamento)
+- **Colonne Calendario**: Data, Bidone, Condomino, Telefono
+- **Formato Data**: DD/MM/YYYY
 
 ## 📚 Documentazione
 

@@ -26,10 +26,6 @@ COPY . .
 COPY run.sh /
 RUN chmod a+x /run.sh
 
-# Crea cartelle necessarie
-RUN mkdir -p /config /data && \
-    echo "# Copy your credentials.json here" > /config/README.txt
-
 # Volume mounts per Home Assistant
 # /config  -> Configurazione (credentials.json, config files)
 # /data    -> Database persistenti (garbage_bot.sqlite, garbage_bot_config.sqlite)

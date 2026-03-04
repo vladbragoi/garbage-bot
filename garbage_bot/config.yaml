@@ -1,0 +1,16 @@
+name: "GarbageBot WhatsApp"
+version: "1.0.0"
+slug: "garbagebot_whatsapp"
+description: "Bot per la gestione dei turni dei bidoni via WhatsApp su Google Sheets"
+arch:
+  - aarch64
+  - amd64
+  - armv7
+startup: application
+boot: auto
+# Mappiamo la cartella /config di Home Assistant in sola lettura (ro)
+# così il bot può leggere il credentials.json inserito dall'utente.
+map:
+  - config:ro
+options: {}
+schema: {}
