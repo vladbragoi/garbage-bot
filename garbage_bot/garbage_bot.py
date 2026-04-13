@@ -35,6 +35,27 @@ class AppConfig:
     COLOR_PRIMARY: str = "#356854"
     COLOR_ALTERNATE: str = "#f2f2f2"
     ADMIN_NUMBERS: Tuple[str, ...] = ("393508950370", "117584041140339")
+    TELEGRAM_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+
+    def __post_init__(self):
+        """Metodo chiamato automaticamente dopo l'inizializzazione della dataclass"""
+        options_file = "/data/options.json"
+        if os.path.exists(options_file):
+            try:
+                with open(options_file, "r") as f:
+                    options = json.load(f)
+                    
+                # Sovrascrive i valori se presenti nella configurazione di HA
+                if "telegram_token" in options:
+                    self.TELEGRAM_TOKEN = options["telegram_token"]
+                if "telegram_chat_id" in options:
+                    self.TELEGRAM_CHAT_ID = str(options["telegram_chat_id"]) # Cast a stringa per sicurezza
+                    
+                # Opzionale: puoi esporre anche altri parametri su HA, ad es. LOG_LEVEL
+                
+            except Exception as e:
+                print(f"⚠️ Errore nella lettura di {options_file}: {e}")
 
 config = AppConfig()
 
@@ -456,6 +477,9 @@ class GarbageBot:
 
     async def _send_qr_telegram(self, qr_text: str):
         """Genera l'immagine del QR e la invia via Telegram."""
+        if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
+            self.log.error("Telegram non configurato in Home Assistant. Impossibile inviare QR.")
+            return
         def _send():
             try:
                 # Genera immagine QR
