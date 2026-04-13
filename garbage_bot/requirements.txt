@@ -5,3 +5,5 @@ python-magic
 google-api-python-client
 xhtml2pdf
 google-auth
+qrcode[pil]
+requests

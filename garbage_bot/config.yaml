@@ -12,5 +12,10 @@ boot: auto
 # così il bot può leggere il credentials.json inserito dall'utente.
 map:
   - config:ro
-options: {}
-schema: {}
+options:
+  telegram_token: ""
+  telegram_chat_id: ""
+
+schema:
+  telegram_token: "str"
+  telegram_chat_id: "str"

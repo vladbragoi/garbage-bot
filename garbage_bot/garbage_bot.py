@@ -5,9 +5,12 @@ import signal
 import sqlite3
 import json
 import socket
+import os
+import requests
+import qrcode
+from io import BytesIO
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional, Tuple, Callable
-from io import BytesIO
 from dataclasses import dataclass
 
 # Librerie Esterne
@@ -15,7 +18,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from xhtml2pdf.document import pisaDocument
 from neonize.aioze.client import NewAClient
-from neonize.aioze.events import ConnectedEv, MessageEv
+from neonize.aioze.events import ConnectedEv, MessageEv, QREv  # Aggiunto QREv
 from neonize.proto.Neonize_pb2 import JID
 
 # --- NETWORK FIX ---
@@ -434,11 +437,56 @@ class GarbageBot:
             '/config_reset': self.cmd_admin_reset,
             '/db_reset': self.cmd_admin_db_reset,
         }
-        self._register_events()
+        self._create_client()
 
-    def _register_events(self):
+    def _create_client(self):
+        """Inizializza il client Neonize e registra gli eventi."""
+        self.log.info("Inizializzazione client WhatsApp...")
+        self.client = NewAClient(config.DB_PATH_NEONIZE)
         self.client.event(ConnectedEv)(self.on_connected)
         self.client.event(MessageEv)(self.on_message)
+        # Registriamo l'evento per il QR Code
+        self.client.event(QREv)(self.on_qr_generated)
+
+    async def on_qr_generated(self, client: NewAClient, ev: QREv):
+        """Viene chiamato quando WhatsApp richiede una nuova scansione QR."""
+        qr_string = ev.String
+        self.log.warning("⚠️ Nuovo QR Code generato. Invio a Telegram...")
+        await self._send_qr_telegram(qr_string)
+
+    async def _send_qr_telegram(self, qr_text: str):
+        """Genera l'immagine del QR e la invia via Telegram."""
+        def _send():
+            try:
+                # Genera immagine QR
+                qr = qrcode.QRCode(version=1, box_size=10, border=5)
+                qr.add_data(qr_text)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+                
+                buf = BytesIO()
+                img.save(buf, format='PNG')
+                buf.seek(0)
+
+                # Chiamata API Telegram
+                url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendPhoto"
+                files = {'photo': ('qr.png', buf, 'image/png')}
+                data = {
+                    'chat_id': config.TELEGRAM_CHAT_ID,
+                    'caption': "🔄 *GarbageBot: Sessione Scaduta*\nInquadra questo QR entro 60 secondi per ricollegare il bot.",
+                    'parse_mode': 'Markdown'
+                }
+                
+                resp = requests.post(url, files=files, data=data, timeout=20)
+                if resp.status_code == 200:
+                    self.log.info("✅ QR Code inviato correttamente su Telegram.")
+                else:
+                    self.log.error(f"❌ Errore invio Telegram: {resp.text}")
+            except Exception as e:
+                self.log.error(f"❌ Errore durante generazione/invio QR: {e}")
+
+        # Eseguiamo la parte sincrona (requests/qrcode) in un thread separato per non bloccare l'event loop
+        await asyncio.to_thread(_send)
 
     async def on_connected(self, client: NewAClient, __: ConnectedEv):
         self.log.info("⚡ Bot Connesso!")
@@ -894,16 +942,49 @@ class GarbageBot:
             self.log.info(f"🔄 Stato {jid_str}: {status}")
 
     async def start(self):
+        """Ciclo principale con gestione errori e auto-recovery."""
         asyncio.create_task(self.scheduler_loop())
-        await self.client.connect()
-        await self.client.idle()
+        
+        while True:
+            try:
+                self.log.info("Tentativo di connessione a WhatsApp...")
+                await self.client.connect()
+                # idle() mantiene l'esecuzione finché la connessione è attiva
+                await self.client.idle() 
+                
+            except Exception as e:
+                err_str = str(e).lower()
+                self.log.error(f"💥 Errore rilevato: {e}")
+                
+                # Gestione specifica Errore 405 (Client Outdated) o EOF (Disconnessione forzata)
+                if "405" in err_str or "eof" in err_str or "reader" in err_str:
+                    self.log.critical("⚠️ Sessione interrotta da WhatsApp. Procedo al reset del database di sessione...")
+                    
+                    try:
+                        await self.client.disconnect()
+                    except:
+                        pass
+                    
+                    # Rimuoviamo il file sqlite di neonize per forzare un nuovo pairing
+                    if os.path.exists(config.DB_PATH_NEONIZE):
+                        try:
+                            os.remove(config.DB_PATH_NEONIZE)
+                            self.log.info(f"File {config.DB_PATH_NEONIZE} rimosso.")
+                        except Exception as re:
+                            self.log.error(f"Impossibile rimuovere il DB: {re}")
+                    
+                    # Ricreiamo l'istanza del client
+                    self._create_client()
+                    self.log.info("Client ricreato. Il prossimo tentativo genererà un nuovo QR.")
+
+                self.log.info("In attesa di 10 secondi prima del riavvio...")
+                await asyncio.sleep(10)
 
 if __name__ == "__main__":
     logging.basicConfig(level=config.LOG_LEVEL, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
     bot = GarbageBot()
     def handle_exit(*args): sys.exit(0)
     signal.signal(signal.SIGINT, handle_exit)
-    try:
-        bot.client.loop.run_until_complete(bot.start())
-    except KeyboardInterrupt:
-        pass
+    signal.signal(signal.SIGTERM, handle_exit)
+    
+    asyncio.run(bot.start())
