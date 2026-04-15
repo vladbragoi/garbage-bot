@@ -18,7 +18,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from xhtml2pdf.document import pisaDocument
 from neonize.aioze.client import NewAClient
-from neonize.aioze.events import ConnectedEv, MessageEv, QREv  # Aggiunto QREv
+from neonize.aioze.events import ConnectedEv, MessageEv, QREv, LoggedOutEv
 from neonize.proto.Neonize_pb2 import JID
 
 # --- NETWORK FIX ---
@@ -466,8 +466,27 @@ class GarbageBot:
         self.client = NewAClient(config.DB_PATH_NEONIZE)
         self.client.event(ConnectedEv)(self.on_connected)
         self.client.event(MessageEv)(self.on_message)
-        # Registriamo l'evento per il QR Code
         self.client.event(QREv)(self.on_qr_generated)
+        self.client.event(LoggedOutEv)(self.on_logged_out)
+
+    async def on_logged_out(self, client: NewAClient, ev: LoggedOutEv):
+        """Viene chiamato quando l'utente scollega il dispositivo da WhatsApp."""
+        self.log.critical("🚫 Dispositivo rimosso volontariamente da WhatsApp (LoggedOut)!")
+        
+        # Elimina subito il database di sessione ormai inutile
+        if os.path.exists(config.DB_PATH_NEONIZE):
+            try:
+                os.remove(config.DB_PATH_NEONIZE)
+                self.log.info(f"🗑️ File {config.DB_PATH_NEONIZE} rimosso in seguito a disconnessione.")
+            except Exception as e:
+                self.log.error(f"Impossibile rimuovere il DB: {e}")
+                
+        # Forza la chiusura del client. Questo interromperà il client.idle() 
+        # nel ciclo start(), permettendo al bot di ricreare subito la sessione.
+        try:
+            await self.client.disconnect()
+        except:
+            pass
 
     async def on_qr_generated(self, client: NewAClient, ev: QREv):
         """Viene chiamato quando WhatsApp richiede una nuova scansione QR."""
