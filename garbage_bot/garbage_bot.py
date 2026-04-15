@@ -46,14 +46,24 @@ class AppConfig:
                 with open(options_file, "r") as f:
                     options = json.load(f)
                     
-                # Sovrascrive i valori se presenti nella configurazione di HA
+                # Telegram
                 if "telegram_token" in options:
                     self.TELEGRAM_TOKEN = options["telegram_token"]
                 if "telegram_chat_id" in options:
-                    self.TELEGRAM_CHAT_ID = str(options["telegram_chat_id"]) # Cast a stringa per sicurezza
+                    self.TELEGRAM_CHAT_ID = str(options["telegram_chat_id"])
                     
-                # Opzionale: puoi esporre anche altri parametri su HA, ad es. LOG_LEVEL
-                
+                # GESTIONE LOG LEVEL DINAMICO
+                if "log_level" in options:
+                    level_str = options["log_level"].upper()
+                    if level_str == "DEBUG":
+                        self.LOG_LEVEL = logging.DEBUG
+                    elif level_str == "WARNING":
+                        self.LOG_LEVEL = logging.WARNING
+                    elif level_str == "ERROR":
+                        self.LOG_LEVEL = logging.ERROR
+                    else:
+                        self.LOG_LEVEL = logging.INFO
+                        
             except Exception as e:
                 print(f"⚠️ Errore nella lettura di {options_file}: {e}")
 
@@ -488,7 +498,7 @@ class GarbageBot:
             self.log.error(f"Errore durante l'intercettazione dell'evento QR: {e}")
 
     async def _send_qr_telegram(self, qr_text: str):
-        """Genera l'immagine del QR code e la invia via Telegram."""
+        """Genera l'immagine del QR code e la invia via Telegram con log avanzati."""
         if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
             self.log.error("Telegram non configurato in Home Assistant. Impossibile inviare QR.")
             return
@@ -505,25 +515,51 @@ class GarbageBot:
                 img.save(buf, format='PNG')
                 buf.seek(0)
 
+                # 1. Pulizia dei dati e mascheramento token per i log
+                # Strip rimuove eventuali spazi vuoti accidentali iniziali o finali
+                clean_chat_id = str(config.TELEGRAM_CHAT_ID).strip() 
+                masked_token = f"{config.TELEGRAM_TOKEN[:5]}...{config.TELEGRAM_TOKEN[-5:]}" if len(config.TELEGRAM_TOKEN) > 10 else "***"
+                
                 url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendPhoto"
+                
+                # 2. STAMPA DIAGNOSTICA IN DEBUG
+                self.log.debug("⚙️ [DEBUG TELEGRAM] Preparazione invio QR...")
+                self.log.debug(f"⚙️ [DEBUG TELEGRAM] Token (mascherato): {masked_token}")
+                self.log.debug(f"⚙️ [DEBUG TELEGRAM] Chat ID grezzo letto da config: '{config.TELEGRAM_CHAT_ID}' (tipo: {type(config.TELEGRAM_CHAT_ID)})")
+                self.log.debug(f"⚙️ [DEBUG TELEGRAM] Chat ID pulito: '{clean_chat_id}'")
+                
                 files = {'photo': ('qr.png', buf, 'image/png')}
                 data = {
-                    'chat_id': config.TELEGRAM_CHAT_ID,
+                    'chat_id': clean_chat_id,
                     'caption': "🔄 *GarbageBot: Login Richiesto*\nInquadra questo QR entro pochi secondi per collegare il bot.",
                     'parse_mode': 'Markdown'
                 }
                 
+                self.log.debug(f"⚙️ [DEBUG TELEGRAM] Dati payload pronti: {data}")
+
+                # 3. Chiamata HTTP
                 resp = requests.post(url, files=files, data=data, timeout=20)
+                
+                # 4. Esito della chiamata
+                self.log.debug(f"⚙️ [DEBUG TELEGRAM] Status Code HTTP: {resp.status_code}")
+                self.log.debug(f"⚙️ [DEBUG TELEGRAM] Risposta Completa: {resp.text}")
+
                 if resp.status_code == 200:
                     self.log.info("✅ QR Code inviato correttamente su Telegram.")
                 else:
-                    self.log.error(f"❌ Errore invio Telegram: {resp.text}")
+                    self.log.error(f"❌ Errore invio Telegram (HTTP {resp.status_code}): {resp.text}")
+                    # Aggiungiamo un suggerimento se l'errore è 'chat not found'
+                    if "chat not found" in resp.text.lower():
+                        self.log.error("💡 SUGGERIMENTO: L'errore 'chat not found' ha due cause principali:")
+                        self.log.error("1. Il Chat ID non è corretto. Deve essere solo un numero (es. 123456789).")
+                        self.log.error("2. Non hai mai inviato un messaggio (es. /start) al bot da Telegram sul tuo telefono.")
+
             except Exception as e:
-                self.log.error(f"❌ Errore durante generazione/invio QR: {e}")
+                self.log.exception(f"❌ ECCEZIONE critica durante generazione/invio QR: {e}")
 
-        # Eseguiamo la creazione e l'invio in un thread separato per non bloccare l'event loop asincrono
+        # Eseguiamo la creazione e l'invio in un thread separato
         await asyncio.to_thread(_send)
-
+    
     async def on_logged_out(self, client: NewAClient, ev: LoggedOutEv):
         """Viene chiamato quando l'utente scollega il dispositivo da WhatsApp Web/App."""
         self.log.critical("🚫 Dispositivo rimosso volontariamente da WhatsApp (LoggedOut)!")

@@ -1,5 +1,5 @@
 name: "GarbageBot WhatsApp"
-version: "1.0.3"
+version: "1.0.4-b1"
 slug: "garbagebot_whatsapp"
 description: "Bot per la gestione dei turni dei bidoni via WhatsApp su Google Sheets"
 arch:
@@ -13,9 +13,11 @@ boot: auto
 map:
   - config:ro
 options:
+  log_level: "info"
   telegram_token: ""
   telegram_chat_id: ""
 
 schema:
   telegram_token: "str"
   telegram_chat_id: "str"
+  log_level: "list(debug|info|warning|error)"
