@@ -1,5 +1,5 @@
 name: "GarbageBot WhatsApp"
-version: "1.0.4-b2"
+version: "1.0.4-b3"
 slug: "garbagebot_whatsapp"
 description: "Bot per la gestione dei turni dei bidoni via WhatsApp su Google Sheets"
 arch:

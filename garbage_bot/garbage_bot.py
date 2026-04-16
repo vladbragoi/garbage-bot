@@ -572,8 +572,8 @@ class GarbageBot:
             
         # 2. Verifichiamo attivamente che il client sia disconnesso (con un timeout di sicurezza di 5 secondi)
         timeout = 50  # 50 cicli da 0.1s = 5 secondi
-        # Nota: in alcune versioni di neonize la proprietà potrebbe chiamarsi self.client.connected
-        while self.client.is_connected() and timeout > 0:
+        
+        while (await self.client.is_connected()) and timeout > 0:
             await asyncio.sleep(0.1) # Breve pausa per non bloccare la CPU durante il polling
             timeout -= 1
             
