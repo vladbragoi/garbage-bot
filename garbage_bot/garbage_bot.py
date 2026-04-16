@@ -18,7 +18,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from xhtml2pdf.document import pisaDocument
 from neonize.aioze.client import NewAClient
-from neonize.aioze.events import ConnectedEv, MessageEv, QREv, LoggedOutEv, PairStatusEv
+from neonize.aioze.events import ConnectedEv, MessageEv, LoggedOutEv, PairStatusEv
 from neonize.proto.Neonize_pb2 import JID
 
 # --- NETWORK FIX ---
@@ -504,18 +504,7 @@ class GarbageBot:
         self.client.event(ConnectedEv)(self.on_connected)
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
-
-        # METODO 2: Registriamo in blocco tutti gli eventi QR conosciuti nelle varie versioni
-        try:
-            self.client.event(QREv)(self.on_qr_generated)
-        except ImportError:
-            pass
-
-        try:
-            # Molte versioni recenti usano PairStatusEv al posto di QREv
-            self.client.event(PairStatusEv)(self.on_qr_generated)
-        except ImportError:
-            pass
+        self.client.event(PairStatusEv)(self.on_qr_generated)
 
     async def on_qr_generated(self, client: NewAClient, ev):
         """Viene scatenato automaticamente dagli eventi se il DB è vuoto."""
@@ -599,14 +588,18 @@ class GarbageBot:
         """Viene chiamato quando l'utente scollega il dispositivo da WhatsApp Web/App."""
         self.log.critical("🚫 Dispositivo rimosso volontariamente da WhatsApp (LoggedOut)!")
         
-        # 1. Richiediamo la disconnessione al client per chiudere la socket
+        # 1. Chiude la connessione
         try:
             await self.client.disconnect()
         except Exception as e:
-            self.log.debug(f"Errore durante la disconnessione: {e}")
+            self.log.debug(f"Errore disconnessione: {e}")
             
-        # 2. Richiamiamo la pulizia. Ci penserà lei ad aspettare che il file si sblocchi!
+        # 2. Cancella il DB
         await self._destroy_session()
+        
+        # 3. Ricrea istantaneamente un client vergine
+        self._create_client()
+        self.log.info("🔄 Client azzerato e pronto per il nuovo QR.")
 
     async def _destroy_session(self):
         """Elimina il database di sessione gestendo eventuali lock (race conditions) di SQLite."""
@@ -629,46 +622,53 @@ class GarbageBot:
             self.log.error(f"❌ Impossibile rimuovere il DB dopo {max_retries} tentativi. Il file è bloccato.")
 
     async def start(self):
-        """Ciclo principale con gestione errori e auto-recovery."""
+        """Ciclo principale con gestione errori e riavvio istantaneo del QR."""
         asyncio.create_task(self.scheduler_loop())
         
         while True:
             try:
                 self.log.info("🔌 Tentativo di connessione a WhatsApp...")
-
-                # Assicura che gli eventi usino l'event loop corrente e non muoiano nel nulla
+                
+                # --- FIX BUG NEONIZE PYTHON 3.12+ ---
                 try:
                     import neonize.aioze.events
                     neonize.aioze.events.event_global_loop = asyncio.get_running_loop()
                 except Exception:
                     pass
+                # ------------------------------------
 
-                # Se il db non c'è, connect() chiamerà automaticamente on_qr_generated()
+                # Se è un client nuovo (post-destroy), questo scatenerà il nuovo QR
                 await self.client.connect()
-                
-                # Mantiene viva l'esecuzione finché c'è connessione
                 await self.client.idle() 
                 
             except Exception as e:
                 err_str = str(e).lower()
                 self.log.error(f"💥 Errore rilevato durante l'esecuzione: {e}")
                 
-                # Disconnessioni fatali: sessione revocata, vecchia o disconnessa
-                # Disconnessioni fatali: sessione revocata, vecchia, disconnessa o db bloccato
-                if "405" in err_str or "eof" in err_str or "outdated" in err_str or "reader" in err_str or "readonly" in err_str:
-                    self.log.warning("⚠️ Sessione interrotta. Inizio procedura di ripristino...")
-                    
+                # Intercetta le disconnessioni fatali
+                if any(x in err_str for x in ["405", "eof", "outdated", "reader", "readonly"]):
+                    self.log.warning("⚠️ Sessione corrotta/interrotta. Inizio procedura di ripristino...")
                     try:
                         await self.client.disconnect()
                     except:
                         pass
-                    
+                        
                     await self._destroy_session()
-                    self._create_client() # Ricrea il client per il prossimo ciclo
-                    self.log.info("🔄 Client ricreato. Al prossimo tentativo verrà generato un nuovo QR.")
+                    self._create_client()
+                    
+                    self.log.info("⚡ Riavvio immediato per generazione QR...")
+                    # Il "continue" salta la pausa di 10 secondi e torna su al "while True"
+                    continue 
 
-                self.log.info("⏳ In attesa di 10 secondi prima di ricollegare...")
-                await asyncio.sleep(10)
+            # Se arriviamo qui, il socket si è chiuso in modo "pulito" (es. tramite il LoggedOut)
+            # Se il database è stato appena cancellato, forziamo il riavvio immediato!
+            if not os.path.exists(config.DB_PATH_NEONIZE):
+                self.log.info("⚡ DB non trovato (cancellato dal logout). Riavvio immediato per nuovo QR...")
+                continue
+
+            # Se invece la rete è caduta ma la sessione è ancora valida, aspetta 10s e riprova
+            self.log.info("⏳ In attesa di 10 secondi prima di ricollegare...")
+            await asyncio.sleep(10)
 
     async def on_connected(self, client: NewAClient, __: ConnectedEv):
         self.log.info("⚡ Bot Connesso!")
