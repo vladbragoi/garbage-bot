@@ -563,21 +563,49 @@ class GarbageBot:
     async def on_logged_out(self, client: NewAClient, ev: LoggedOutEv):
         """Viene chiamato quando l'utente scollega il dispositivo da WhatsApp Web/App."""
         self.log.critical("🚫 Dispositivo rimosso volontariamente da WhatsApp (LoggedOut)!")
-        self._destroy_session()
         
+        # 1. Richiediamo la disconnessione al client
         try:
             await self.client.disconnect()
-        except:
-            pass
+        except Exception as e:
+            self.log.debug(f"Errore durante la disconnessione: {e}")
+            
+        # 2. Verifichiamo attivamente che il client sia disconnesso (con un timeout di sicurezza di 5 secondi)
+        timeout = 50  # 50 cicli da 0.1s = 5 secondi
+        # Nota: in alcune versioni di neonize la proprietà potrebbe chiamarsi self.client.connected
+        while self.client.is_connected() and timeout > 0:
+            await asyncio.sleep(0.1) # Breve pausa per non bloccare la CPU durante il polling
+            timeout -= 1
+            
+        if timeout == 0:
+            self.log.warning("⚠️ Timeout attesa disconnessione. Procedo comunque alla pulizia.")
+        else:
+            self.log.debug("✅ Client scollegato con successo.")
+        
+        # 3. Chiamata sicura alla cancellazione del DB
+        self._destroy_session()
 
     def _destroy_session(self):
-        """Elimina il database di sessione per forzare un nuovo pairing."""
+        """Elimina il database di sessione gestendo eventuali lock (race conditions) di SQLite."""
         if os.path.exists(config.DB_PATH_NEONIZE):
-            try:
-                os.remove(config.DB_PATH_NEONIZE)
-                self.log.info(f"🗑️ Database di sessione rimosso con successo.")
-            except Exception as e:
-                self.log.error(f"Impossibile rimuovere il DB: {e}")
+            # Proviamo a cancellare il file. Se whatsmeow sta ancora pulendo i suoi thread, 
+            # il file sarà loccato e genererà errore. Noi ritentiamo fino a 10 volte.
+            max_retries = 10
+            for attempt in range(max_retries):
+                try:
+                    os.remove(config.DB_PATH_NEONIZE)
+                    self.log.info(f"🗑️ Database di sessione rimosso con successo (Tentativo {attempt + 1}).")
+                    return # Esce dalla funzione appena ci riesce
+                except PermissionError as pe: # Gestione specifica per Windows/Lock OS
+                    pass
+                except Exception as e:
+                    # Se l'errore è il famoso "readonly" di sqlite, andiamo in retry
+                    pass
+                
+                import time
+                time.sleep(0.2) # Pausa sincrona minima prima del prossimo tentativo
+                
+            self.log.error(f"❌ Impossibile rimuovere il DB dopo {max_retries} tentativi. Il file è bloccato da un altro processo.")
 
     async def start(self):
         """Ciclo principale con gestione errori e auto-recovery."""
@@ -597,7 +625,8 @@ class GarbageBot:
                 self.log.error(f"💥 Errore rilevato durante l'esecuzione: {e}")
                 
                 # Disconnessioni fatali: sessione revocata, vecchia o disconnessa
-                if "405" in err_str or "eof" in err_str or "outdated" in err_str or "reader" in err_str:
+                # Disconnessioni fatali: sessione revocata, vecchia, disconnessa o db bloccato
+                if "405" in err_str or "eof" in err_str or "outdated" in err_str or "reader" in err_str or "readonly" in err_str:
                     self.log.warning("⚠️ Sessione interrotta. Inizio procedura di ripristino...")
                     
                     try:
