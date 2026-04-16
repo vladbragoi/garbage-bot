@@ -38,23 +38,22 @@ class AppConfig:
     TELEGRAM_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
 
-    def __post_init__(self):
-        """Metodo chiamato automaticamente dopo l'inizializzazione della dataclass"""
+    def load_and_apply(self):
+        """Legge options.json e FORZA l'applicazione del log_level corretto"""
         options_file = "/data/options.json"
+        
         if os.path.exists(options_file):
             try:
                 with open(options_file, "r") as f:
                     options = json.load(f)
                     
-                # Telegram
                 if "telegram_token" in options:
                     self.TELEGRAM_TOKEN = options["telegram_token"]
                 if "telegram_chat_id" in options:
                     self.TELEGRAM_CHAT_ID = str(options["telegram_chat_id"])
                     
-                # GESTIONE LOG LEVEL DINAMICO
                 if "log_level" in options:
-                    level_str = options["log_level"].upper()
+                    level_str = str(options["log_level"]).upper()
                     if level_str == "DEBUG":
                         self.LOG_LEVEL = logging.DEBUG
                     elif level_str == "WARNING":
@@ -63,11 +62,24 @@ class AppConfig:
                         self.LOG_LEVEL = logging.ERROR
                     else:
                         self.LOG_LEVEL = logging.INFO
-                        
             except Exception as e:
-                print(f"⚠️ Errore nella lettura di {options_file}: {e}")
+                # Stampiamo con print normale perché il logger non è ancora configurato
+                print(f"⚠️ Errore lettura options.json: {e}")
+
+        # APPLICAZIONE FORZATA DEL LOGGING
+        # L'uso di force=True sovrascrive eventuali configurazioni fatte da altre librerie importate
+        logging.basicConfig(
+            level=self.LOG_LEVEL, 
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+            datefmt='%d/%m/%Y %H:%M:%S',
+            force=True 
+        )
+        
+        # Facciamo un test immediato
+        logging.getLogger("AppConfig").debug(f"⚙️ Log level impostato su: {logging.getLevelName(self.LOG_LEVEL)}")
 
 config = AppConfig()
+config.load_and_apply()
 
 # --- REPOSITORY ---
 class ConfigRepository:
@@ -1096,7 +1108,6 @@ class GarbageBot:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=config.LOG_LEVEL, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
     bot = GarbageBot()
     def handle_exit(*args): sys.exit(0)
     signal.signal(signal.SIGINT, handle_exit)
