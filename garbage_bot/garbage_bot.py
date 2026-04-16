@@ -18,7 +18,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from xhtml2pdf.document import pisaDocument
 from neonize.aioze.client import NewAClient
-from neonize.aioze.events import ConnectedEv, MessageEv, QREv, LoggedOutEv
+from neonize.aioze.events import ConnectedEv, MessageEv, QREv, LoggedOutEv, PairStatusEv
 from neonize.proto.Neonize_pb2 import JID
 
 # --- NETWORK FIX ---
@@ -483,28 +483,51 @@ class GarbageBot:
         self._create_client()
 
     def _create_client(self):
-        """Inizializza il client Neonize e registra gli eventi."""
+        """Inizializza il client Neonize e registra gli eventi e le callback."""
         self.log.info("Inizializzazione client WhatsApp...")
-        self.client = NewAClient(config.DB_PATH_NEONIZE)
         
-        # Registrazione degli eventi
+        # METODO 1: Callback diretta (intercetta la stampa a terminale di neonize)
+        def my_qr_callback(client_instance, qr_text: str):
+            self.log.warning("⚠️ QR Code intercettato via Callback nativa!")
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._send_qr_telegram(qr_text))
+            except Exception as e:
+                self.log.error(f"Errore lancio task QR da callback: {e}")
+
+        # Inizializziamo il client passando la callback (ignorando l'errore se la tua versione non lo supporta)
+        try:
+            self.client = NewAClient(config.DB_PATH_NEONIZE, onQr=my_qr_callback)
+        except TypeError:
+            self.client = NewAClient(config.DB_PATH_NEONIZE)
+            
         self.client.event(ConnectedEv)(self.on_connected)
         self.client.event(MessageEv)(self.on_message)
-        self.client.event(LoggedOutEv)(self.on_logged_out) # Se viene scollegato dal telefono
-        self.client.event(QREv)(self.on_qr_generated)      # Se viene generato un nuovo QR code
+        self.client.event(LoggedOutEv)(self.on_logged_out)
 
-    async def on_qr_generated(self, client: NewAClient, ev: QREv):
-        """
-        Viene scatenato automaticamente da client.connect() se il DB è vuoto 
-        o la sessione non esiste.
-        """
+        # METODO 2: Registriamo in blocco tutti gli eventi QR conosciuti nelle varie versioni
         try:
-            # Estrae la stringa del QR (gestisce eventuali differenze di versione del wrapper)
-            qr_string = getattr(ev, 'String', str(ev))
-            if hasattr(ev, 'QR'):
-                qr_string = ev.QR
+            self.client.event(QREv)(self.on_qr_generated)
+        except ImportError:
+            pass
+
+        try:
+            # Molte versioni recenti usano PairStatusEv al posto di QREv
+            self.client.event(PairStatusEv)(self.on_qr_generated)
+        except ImportError:
+            pass
+
+    async def on_qr_generated(self, client: NewAClient, ev):
+        """Viene scatenato automaticamente dagli eventi se il DB è vuoto."""
+        try:
+            # Estrazione sicura della stringa per QREv o PairStatusEv
+            qr_string = getattr(ev, 'String', getattr(ev, 'QR', str(ev)))
+            
+            # Evita di lanciare falsi positivi se l'evento contiene solo uno status vuoto
+            if not qr_string or len(qr_string) < 20:
+                return
                 
-            self.log.warning("⚠️ WhatsApp richiede un nuovo login. Invio QR su Telegram in corso...")
+            self.log.warning("⚠️ QR Code intercettato via Evento asincrono! Invio in corso...")
             await self._send_qr_telegram(qr_string)
         except Exception as e:
             self.log.error(f"Errore durante l'intercettazione dell'evento QR: {e}")
@@ -612,6 +635,14 @@ class GarbageBot:
         while True:
             try:
                 self.log.info("🔌 Tentativo di connessione a WhatsApp...")
+
+                # Assicura che gli eventi usino l'event loop corrente e non muoiano nel nulla
+                try:
+                    import neonize.aioze.events
+                    neonize.aioze.events.event_global_loop = asyncio.get_running_loop()
+                except Exception:
+                    pass
+
                 # Se il db non c'è, connect() chiamerà automaticamente on_qr_generated()
                 await self.client.connect()
                 
