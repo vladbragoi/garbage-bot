@@ -486,7 +486,7 @@ class GarbageBot:
         self._create_client()
 
     def _create_client(self):
-        """Inizializza il client Neonize e registra gli eventi."""
+        """Inizializza il client Neonize e aggancia la callback QR di basso livello."""
         self.log.info("Inizializzazione client WhatsApp...")
         self.client = NewAClient(config.DB_PATH_NEONIZE)
 
@@ -494,21 +494,38 @@ class GarbageBot:
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
 
+        # --- LA CHIAVE D'ORO: OVERRIDE DELLA CALLBACK SINCRONA NATIVA ---
+        # Sfruttiamo il metodo event.qr() esposto dal modulo events di neonize.
+        # Questo sostituisce la stampa a schermo con la nostra funzione,
+        # agendo in modo totalmente sincrono e bypassando il blocco di asyncio!
+        def sync_qr_callback(client_instance, data_qr: bytes):
+            self.log.warning("⚠️ QR Nativo intercettato! Lancio invio Telegram...")
+            # data_qr ci arriva come bytes, lo decodifichiamo in stringa
+            qr_string = data_qr.decode('utf-8')
+            
+            # Scarichiamo il lavoro sul thread per non bloccare la libreria Go
+            self._fire_telegram_thread_sync(qr_string)
+
+        try:
+            # Agganciamo la funzione
+            self.client.event.qr(sync_qr_callback)
+            self.log.info("✅ Sniffer QR nativo agganciato con successo all'Event Manager.")
+        except Exception as e:
+            self.log.error(f"❌ Impossibile agganciare event.qr: {e}")
+
     async def on_qr_generated(self, client, ev):
-        """Gestore ASINCRONO degli eventi QR. Intercetta e delega il lavoro pesante."""
+        """Gestore di Fallback se la callback nativa fallisce."""
         try:
             qr_string = getattr(ev, 'String', getattr(ev, 'QR', str(ev)))
             if not qr_string or len(qr_string) < 20:
                 return
 
-            self.log.warning("⚠️ Evento QR catturato! Passo il payload al thread in background...")
-            
-            # Scarica il lavoro sul thread separato per non bloccare mai l'event loop!
+            self.log.warning("⚠️ Evento QR di Fallback catturato!")
             self._fire_telegram_thread_sync(qr_string)
             
         except Exception as e:
             self.log.error(f"Errore estrazione QR da evento: {e}")
-
+            
     async def on_logged_out(self, client, ev):
         """Viene chiamato quando l'utente scollega il dispositivo.
         Deve essere 'async def' per accontentare il wrapper interno di neonize."""
