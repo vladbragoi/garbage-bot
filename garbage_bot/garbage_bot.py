@@ -486,27 +486,26 @@ class GarbageBot:
         self._create_client()
 
     def _create_client(self):
-        """Inizializza il client Neonize e registra gli eventi fondamentali."""
+        """Inizializza il client Neonize e registra gli eventi operativi."""
         self.log.info("Inizializzazione client WhatsApp...")
-        self.client = NewAClient(config.DB_PATH_NEONIZE)
+
+        # 1. Callback NATIVA: viene eseguita dal motore in C/Go istantaneamente,
+        # bypassando il blocco dell'event loop di Python.
+        def sync_qr_callback(client_instance, qr_text: str):
+            self.log.warning("⚠️ Callback nativa attivata! QR estratto alla sorgente.")
+            self._fire_telegram_thread_sync(qr_text)
+
+        # 2. Inizializziamo passando la callback
+        try:
+            self.client = NewAClient(config.DB_PATH_NEONIZE, onQr=sync_qr_callback)
+        except TypeError:
+            self.client = NewAClient(config.DB_PATH_NEONIZE)
+            self.log.warning("⚠️ Versione neonize obsoleta: onQr non supportato.")
             
         self.client.event(ConnectedEv)(self.on_connected)
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
         
-        # Registrazione degli eventi QR per ricevere la stringa
-        try:
-            from neonize.aioze.events import QREv
-            self.client.event(QREv)(self.on_qr_generated)
-        except ImportError:
-            pass
-
-        try:
-            from neonize.aioze.events import PairStatusEv
-            self.client.event(PairStatusEv)(self.on_qr_generated)
-        except ImportError:
-            pass
-
     async def on_qr_generated(self, client, ev):
         """Gestore ASINCRONO degli eventi QR. 
         Riceve l'evento da neonize e scarica istantaneamente il lavoro."""
@@ -552,7 +551,7 @@ class GarbageBot:
             self.log.error(f"❌ Impossibile rimuovere il DB dopo {max_retries} tentativi. Il file è bloccato.")
 
     async def start(self):
-        """Ciclo principale con gestione errori, circuit breaker e auto-recovery."""
+        """Ciclo principale nativo, privo di conflitti tra loop."""
         asyncio.create_task(self.scheduler_loop())
         
         while True:
@@ -560,35 +559,15 @@ class GarbageBot:
                 self.log.info("🔌 Tentativo di connessione a WhatsApp...")
                 self.session_interrupted.clear() 
                 
-                # --- FIX BUG NEONIZE PYTHON 3.12+ ---
                 try:
                     import neonize.aioze.events
                     neonize.aioze.events.event_global_loop = asyncio.get_running_loop()
                 except Exception:
                     pass
-                # ------------------------------------
 
-                # Il metodo connect() blocca l'event loop finché non viene scansionato il QR.
-                # Lo incapsuliamo in un thread di sistema isolato per mantenere il bot reattivo.
-                def _bg_connect():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        # Gestisce sia se la libreria lo definisce async, sia sync
-                        res = self.client.connect()
-                        if asyncio.iscoroutine(res):
-                            loop.run_until_complete(res)
-                    except Exception as e:
-                        return e
-                    finally:
-                        loop.close()
-                    return None
-
-                # Attendiamo la connessione in background senza congelare asyncio!
-                connect_err = await asyncio.to_thread(_bg_connect)
-                if connect_err:
-                    raise connect_err
-                # --------------------------------------------------------------
+                # Ritorniamo alla connessione classica. Il QR non subirà 
+                # ritardi grazie alla callback nativa inserita in _create_client.
+                await self.client.connect()
                 
                 # --- GESTIONE ANTI-BLOCCO (CIRCUIT BREAKER) ---
                 idle_task = asyncio.create_task(self.client.idle())
@@ -603,45 +582,45 @@ class GarbageBot:
                     task.cancel()
                     
                 for task in done:
+                    # Rilancia eccezioni critiche ignorando quelle cancellate
                     if task.exception() and not isinstance(task.exception(), asyncio.CancelledError):
                         raise task.exception()
-                # ----------------------------------------------
-                
+                        
             except Exception as e:
                 err_str = str(e).lower()
                 self.log.error(f"💥 Errore rilevato dal socket: {e}")
                 
                 if any(x in err_str for x in ["405", "eof", "outdated", "reader", "readonly", "closed"]):
-                    self.log.warning("⚠️ Sessione interrotta per errore fatale. Inizio procedura di ripristino d'emergenza...")
+                    self.log.warning("⚠️ Sessione interrotta per errore fatale. Ripristino in corso...")
                     try:
                         await self.client.disconnect()
-                    except Exception as disconnect_err:
-                        self.log.debug(f"Errore forzatura disconnessione: {disconnect_err}")
+                    except Exception:
+                        pass
                         
                     await asyncio.sleep(1)
                     await self._destroy_session()
                     self._create_client()
-                    self.log.info("⚡ Riavvio immediato per generazione QR post-crash...")
+                    self.log.info("⚡ Riavvio immediato post-crash...")
                     continue 
 
-            # --- TRIGGER POST LOGOUT PULITO (DISPOSITIVO RIMOSSO) ---
+            # --- TRIGGER POST LOGOUT PULITO ---
             if self.session_interrupted.is_set():
-                self.log.warning("⏳ Disconnessione volontaria rilevata. Attendo 3 secondi lo spegnimento della libreria Go interna...")
+                self.log.warning("⏳ Disconnessione volontaria rilevata. Spegnimento libreria Go...")
                 try:
                     await self.client.disconnect()
-                except Exception as e:
-                    self.log.debug(f"Errore disconnessione controllata: {e}")
+                except Exception:
+                    pass
                 
                 await asyncio.sleep(3)
                 await self._destroy_session()
                 
-                self.log.info("⚡ DB rimosso con successo. Ricreo il client e innesco la riconnessione...")
+                self.log.info("⚡ DB rimosso con successo. Ricreo client e riconnetto...")
                 self._create_client()
                 continue
 
             self.log.info("⏳ In attesa di 10 secondi prima di ricollegare...")
             await asyncio.sleep(10)
-    
+
     def _fire_telegram_thread_sync(self, qr_text: str):
         """Lancia un Thread indipendente per non bloccare l'event loop di asyncio."""
         import threading
