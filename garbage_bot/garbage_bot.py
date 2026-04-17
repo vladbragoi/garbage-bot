@@ -18,7 +18,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from xhtml2pdf.document import pisaDocument
 from neonize.aioze.client import NewAClient
-from neonize.aioze.events import ConnectedEv, MessageEv, LoggedOutEv, PairStatusEv
+from neonize.aioze.events import ConnectedEv, MessageEv, LoggedOutEv
 from neonize.proto.Neonize_pb2 import JID
 
 # --- NETWORK FIX ---
@@ -503,6 +503,30 @@ class GarbageBot:
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
 
+        try:
+            from neonize.aioze.events import QREv
+            self.client.event(QREv)(self.on_qr_generated)
+        except ImportError:
+            pass
+
+        try:
+            from neonize.aioze.events import PairStatusEv
+            self.client.event(PairStatusEv)(self.on_qr_generated)
+        except ImportError:
+            pass
+
+    def on_qr_generated(self, client, ev):
+        """Gestore SINCRONO degli eventi QR. Evita il blocco dell'event loop."""
+        try:
+            qr_string = getattr(ev, 'String', getattr(ev, 'QR', str(ev)))
+            if not qr_string or len(qr_string) < 20:
+                return
+            
+            # Delega istantanea al thread separato
+            self._fire_telegram_thread_sync(qr_string)
+        except Exception as e:
+            self.log.error(f"Errore estrazione QR da evento: {e}")
+
     async def on_logged_out(self, client: NewAClient, ev: LoggedOutEv):
         """Viene chiamato quando l'utente scollega il dispositivo da WhatsApp Web/App."""
         self.log.critical("🚫 Dispositivo rimosso volontariamente da WhatsApp (LoggedOut)!")
@@ -605,32 +629,27 @@ class GarbageBot:
             await asyncio.sleep(10)
     
     def _fire_telegram_thread_sync(self, qr_text: str):
-        """Metodo SINCRONO che parte in un Thread separato per non essere mai bloccato da asyncio."""
+        """Thread puro di Python per gestire l'invio HTTP senza bloccare neonize."""
         import threading
         import time
+        import requests
+        import qrcode
+        from io import BytesIO
 
         def _worker():
             try:
-                # --- ANTIRIMBALZO ---
+                # --- ANTIRIMBALZO (10 SECONDI) ---
                 current_time = time.time()
                 last_time = getattr(self, '_last_qr_time', 0)
-                if current_time - last_time < 5:
+                if current_time - last_time < 10:
                     return
                 self._last_qr_time = current_time
-                # --------------------
+                # ---------------------------------
 
-                if not qr_text or len(qr_text) < 20:
-                    return
-
-                self.log.warning("⚠️ Nuovo QR rilevato! Provo a inviarlo subito a Telegram dal Thread di emergenza...")
+                self.log.warning("⚠️ QR rilevato! Generazione immagine e invio Telegram in corso...")
                 
-                # Chiamata bloccante (sincrona) a requests
-                import requests
-                import qrcode
-                from io import BytesIO
-
                 if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
-                    self.log.error("Telegram non configurato in Home Assistant. Impossibile inviare QR.")
+                    self.log.error("Telegram non configurato in Home Assistant.")
                     return
 
                 qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -645,30 +664,36 @@ class GarbageBot:
                 clean_chat_id = str(config.TELEGRAM_CHAT_ID).strip() 
                 url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendPhoto"
                 
-                max_retries = 3
+                # RETRY ROBUSTO (fino a 10 tentativi per bypassare i ritardi di rete di Docker)
+                max_retries = 10
                 for attempt in range(max_retries):
                     try:
+                        self.log.debug(f"Tentativo invio Telegram {attempt+1}/{max_retries}...")
                         files = {'photo': ('qr.png', BytesIO(img_data), 'image/png')}
                         data = {
                             'chat_id': clean_chat_id,
-                            'caption': "🔄 *GarbageBot: Login Richiesto*\nInquadra questo QR entro pochi secondi per collegare il bot.",
+                            'caption': "🔄 *GarbageBot: Login Richiesto*\nInquadra questo QR per collegare il bot.",
                             'parse_mode': 'Markdown'
                         }
                         
-                        resp = requests.post(url, files=files, data=data, timeout=5)
+                        resp = requests.post(url, files=files, data=data, timeout=10)
                         if resp.status_code == 200:
                             self.log.info("✅ QR Code inviato correttamente su Telegram.")
                             return
                         else:
-                            self.log.error(f"❌ Errore API Telegram: {resp.text}")
-                            return
+                            self.log.error(f"❌ Errore API Telegram (HTTP {resp.status_code}): {resp.text}")
+                            # Se l'errore è 400 (Bad Request), è inutile riprovare
+                            if resp.status_code == 400:
+                                return
                     except Exception as e:
-                        time.sleep(2)
+                        self.log.error(f"❌ Errore di rete. Container offline? Riprovo tra 5s... ({e})")
+                        time.sleep(5) # Attesa più lunga per dare tempo alla rete di salire
 
+                self.log.error("❌ Impossibile inviare a Telegram dopo 10 tentativi.")
             except Exception as e:
                 self.log.error(f"❌ Errore critico nel thread Telegram: {e}")
 
-        # Lancia il worker in un vero Thread di sistema
+        # Lancia il worker come demone (così non blocca la chiusura del bot)
         threading.Thread(target=_worker, daemon=True).start()
 
     async def on_connected(self, client: NewAClient, __: ConnectedEv):
