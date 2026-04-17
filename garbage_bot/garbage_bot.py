@@ -474,12 +474,15 @@ class GarbageBot:
             '/help': self.cmd_help,
             '/comandi': self.cmd_help,
             '/attiva': self.cmd_attiva,
-            '/disattiva': self.cmd_disattiva,        # NUOVO COMANDO
+            '/disattiva': self.cmd_disattiva,
             '/config': self.cmd_admin_config,
             '/config_check': self.cmd_admin_check,
             '/config_reset': self.cmd_admin_reset,
             '/db_reset': self.cmd_admin_db_reset,
         }
+
+        self.session_interrupted = asyncio.Event() # Interruttore di sblocco
+
         self._create_client()
 
     def _create_client(self):
@@ -594,12 +597,11 @@ class GarbageBot:
         except Exception as e:
             self.log.debug(f"Errore disconnessione: {e}")
             
-        # 2. Cancella il DB
+        # 2. Cancella il DB attendendo che i file si sblocchino
         await self._destroy_session()
         
-        # 3. Ricrea istantaneamente un client vergine
-        self._create_client()
-        self.log.info("🔄 Client azzerato e pronto per il nuovo QR.")
+        # 3. MANDA IL SEGNALE AL CICLO START PER SBLOCCARLO!
+        self.session_interrupted.set()
 
     async def _destroy_session(self):
         """Elimina il database di sessione gestendo eventuali lock (race conditions) di SQLite."""
@@ -622,12 +624,13 @@ class GarbageBot:
             self.log.error(f"❌ Impossibile rimuovere il DB dopo {max_retries} tentativi. Il file è bloccato.")
 
     async def start(self):
-        """Ciclo principale con gestione errori e riavvio istantaneo del QR."""
+        """Ciclo principale con gestione errori e sblocco asincrono."""
         asyncio.create_task(self.scheduler_loop())
         
         while True:
             try:
                 self.log.info("🔌 Tentativo di connessione a WhatsApp...")
+                self.session_interrupted.clear() # Riarmare l'interruttore all'avvio
                 
                 # --- FIX BUG NEONIZE PYTHON 3.12+ ---
                 try:
@@ -637,15 +640,32 @@ class GarbageBot:
                     pass
                 # ------------------------------------
 
-                # Se è un client nuovo (post-destroy), questo scatenerà il nuovo QR
                 await self.client.connect()
-                await self.client.idle() 
+                
+                # --- GESTIONE ANTI-BLOCCO (CIRCUIT BREAKER) ---
+                # Creiamo due task che corrono in parallelo
+                idle_task = asyncio.create_task(self.client.idle())
+                interrupt_task = asyncio.create_task(self.session_interrupted.wait())
+
+                # Aspettiamo che il primo dei due finisca (FIRST_COMPLETED)
+                done, pending = await asyncio.wait(
+                    [idle_task, interrupt_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Se l'interruttore è scattato, idle_task è ancora bloccato nei 'pending'. Lo uccidiamo forzatamente!
+                for task in pending:
+                    task.cancel()
+                    
+                # Solleviamo eventuali eccezioni reali catturate durante l'idle
+                for task in done:
+                    if task.exception():
+                        raise task.exception()
                 
             except Exception as e:
                 err_str = str(e).lower()
                 self.log.error(f"💥 Errore rilevato durante l'esecuzione: {e}")
                 
-                # Intercetta le disconnessioni fatali
                 if any(x in err_str for x in ["405", "eof", "outdated", "reader", "readonly"]):
                     self.log.warning("⚠️ Sessione corrotta/interrotta. Inizio procedura di ripristino...")
                     try:
@@ -656,17 +676,15 @@ class GarbageBot:
                     await self._destroy_session()
                     self._create_client()
                     
-                    self.log.info("⚡ Riavvio immediato per generazione QR...")
-                    # Il "continue" salta la pausa di 10 secondi e torna su al "while True"
+                    self.log.info("⚡ Riavvio immediato per generazione QR da crash...")
                     continue 
 
-            # Se arriviamo qui, il socket si è chiuso in modo "pulito" (es. tramite il LoggedOut)
-            # Se il database è stato appena cancellato, forziamo il riavvio immediato!
+            # --- TRIGGER POST LOGOUT PULITO ---
             if not os.path.exists(config.DB_PATH_NEONIZE):
-                self.log.info("⚡ DB non trovato (cancellato dal logout). Riavvio immediato per nuovo QR...")
+                self.log.info("⚡ DB non trovato (rimozione completata con successo). Ricreo il client e innesco la riconnessione...")
+                self._create_client()
                 continue
 
-            # Se invece la rete è caduta ma la sessione è ancora valida, aspetta 10s e riprova
             self.log.info("⏳ In attesa di 10 secondi prima di ricollegare...")
             await asyncio.sleep(10)
 
