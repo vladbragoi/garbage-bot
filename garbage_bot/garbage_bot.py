@@ -787,36 +787,55 @@ class GarbageBot:
             self.log.error(f"Errore verifica admin gruppo: {e}")
             return False
 
-    def _is_admin(self, msg: MessageEv) -> bool:
+    def _is_admin(self, msg) -> bool:
+        """
+        Verifica se il mittente è un amministratore.
+        Versione blindata: gestisce LID e variazioni di maiuscole/minuscole nel Protobuf.
+        """
         try:
-            # 1. Identifica l'oggetto JID corretto (Gruppo vs Chat Privata)
-            if msg.Info.MessageSource.IsGroup:
-                sender_jid = msg.Info.MessageSource.Sender
-            else:
-                sender_jid = msg.Info.MessageSource.Chat
-
-            # 2. Estrae il server e il numero (o ID)
-            server = getattr(sender_jid, 'Server', '')
-            sender_number = getattr(sender_jid, 'User', '')
-
-            # 3. BLOCCO LID: Ignora le identità tecniche interne di WhatsApp
-            if server == "lid":
-                self.log.debug(f"Ignorato ID tecnico WhatsApp (LID): {sender_number}")
+            # 1. Navigazione sicura dell'albero del messaggio (fallback da Maiuscolo a minuscolo)
+            info = getattr(msg, 'info', getattr(msg, 'Info', None))
+            if not info:
                 return False
 
-            # 4. Controllo Autorizzazione (tramite Add-on di Home Assistant)
+            msg_source = getattr(info, 'message_source', getattr(info, 'MessageSource', None))
+            if not msg_source:
+                return False
+
+            is_group = getattr(msg_source, 'is_group', getattr(msg_source, 'IsGroup', False))
+
+            # Estrazione del JID del mittente
+            if is_group:
+                sender_jid = getattr(msg_source, 'sender', getattr(msg_source, 'Sender', None))
+            else:
+                sender_jid = getattr(msg_source, 'chat', getattr(msg_source, 'Chat', None))
+
+            if not sender_jid:
+                return False
+
+            # 2. Estrazione sicura di server e numero (o ID)
+            server = getattr(sender_jid, 'server', getattr(sender_jid, 'Server', ''))
+            sender_number = str(getattr(sender_jid, 'user', getattr(sender_jid, 'User', '')))
+
+            # 3. BLOCCO LID: Ignora le identità tecniche interne dei multi-dispositivo
+            if server == "lid":
+                # Silenzioso, non inquina i log
+                return False
+
+            # 4. Controllo Autorizzazione (tramite configurazione di Home Assistant)
             if sender_number in config.MOBILE_NUMBER: 
                 return True
 
-            # 5. Auto-autorizzazione (Se scrivi direttamente dal telefono che ospita il bot)
-            if self.me and getattr(self.me, 'User', '') == sender_number: 
+            # 5. Auto-autorizzazione (Se scrivi dal telefono stesso che ospita il bot)
+            me_user = str(getattr(self.me, 'user', getattr(self.me, 'User', '')))
+            if self.me and sender_number == me_user: 
                 return True
 
             self.log.warning(f"Tentativo di accesso admin negato da: {sender_number}@{server}")
             return False
 
         except Exception as e:
-            self.log.error(f"Errore durante la verifica dei permessi admin: {e}")
+            self.log.error(f"Errore imprevisto durante la verifica admin: {e}")
             return False
 
     async def _get_sheet_context(self, msg: MessageEv) -> Optional[str]:

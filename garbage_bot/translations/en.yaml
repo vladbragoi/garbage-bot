@@ -1,0 +1,13 @@
+configuration:
+  log_level:
+    name: "Log Level"
+    description: "Choose the level of detail for the logs displayed in the terminal."
+  telegram_token:
+    name: "Telegram Bot Token"
+    description: "The token provided by BotFather to send login QR Codes."
+  telegram_chat_id:
+    name: "Telegram Chat ID"
+    description: "The numeric ID of your Telegram chat where you will receive the QR codes."
+  bot_mobile_number:
+    name: "Bot Mobile Number"
+    description: "The bot's phone number (international format without the '+', e.g., 393500000000)."
