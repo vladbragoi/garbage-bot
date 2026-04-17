@@ -486,23 +486,15 @@ class GarbageBot:
         self._create_client()
 
     def _create_client(self):
-        """Inizializza il client Neonize."""
+        """Inizializza il client Neonize e registra gli eventi fondamentali."""
         self.log.info("Inizializzazione client WhatsApp...")
-        
-        # Quando neonize genera un QR, chiamerà questa funzione sincrona.
-        # Noi scarichiamo SUBITO il lavoro su un Thread indipendente.
-        def my_qr_callback(client_instance, qr_text: str):
-            self._fire_telegram_thread_sync(qr_text)
-
-        try:
-            self.client = NewAClient(config.DB_PATH_NEONIZE, onQr=my_qr_callback)
-        except TypeError:
-            self.client = NewAClient(config.DB_PATH_NEONIZE)
+        self.client = NewAClient(config.DB_PATH_NEONIZE)
             
         self.client.event(ConnectedEv)(self.on_connected)
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
-
+        
+        # Registrazione degli eventi QR per ricevere la stringa
         try:
             from neonize.aioze.events import QREv
             self.client.event(QREv)(self.on_qr_generated)
@@ -515,15 +507,18 @@ class GarbageBot:
         except ImportError:
             pass
 
-    def on_qr_generated(self, client, ev):
-        """Gestore SINCRONO degli eventi QR. Evita il blocco dell'event loop."""
+    async def on_qr_generated(self, client, ev):
+        """Gestore ASINCRONO degli eventi QR. 
+        Riceve l'evento da neonize e scarica istantaneamente il lavoro."""
         try:
+            # Estrazione sicura della stringa
             qr_string = getattr(ev, 'String', getattr(ev, 'QR', str(ev)))
             if not qr_string or len(qr_string) < 20:
                 return
             
-            # Delega istantanea al thread separato
+            # Deleghiamo subito il lavoro alla funzione che gestisce il Thread
             self._fire_telegram_thread_sync(qr_string)
+            
         except Exception as e:
             self.log.error(f"Errore estrazione QR da evento: {e}")
 
@@ -649,12 +644,9 @@ class GarbageBot:
             await asyncio.sleep(10)
     
     def _fire_telegram_thread_sync(self, qr_text: str):
-        """Thread puro di Python per gestire l'invio HTTP senza bloccare neonize."""
+        """Lancia un Thread indipendente per non bloccare l'event loop di asyncio."""
         import threading
         import time
-        import requests
-        import qrcode
-        from io import BytesIO
 
         def _worker():
             try:
@@ -668,8 +660,12 @@ class GarbageBot:
 
                 self.log.warning("⚠️ QR rilevato! Generazione immagine e invio Telegram in corso...")
                 
+                import requests
+                import qrcode
+                from io import BytesIO
+
                 if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
-                    self.log.error("Telegram non configurato in Home Assistant.")
+                    self.log.error("Telegram non configurato in Home Assistant. Invio QR annullato.")
                     return
 
                 qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -684,7 +680,6 @@ class GarbageBot:
                 clean_chat_id = str(config.TELEGRAM_CHAT_ID).strip() 
                 url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendPhoto"
                 
-                # RETRY ROBUSTO (fino a 10 tentativi per bypassare i ritardi di rete di Docker)
                 max_retries = 10
                 for attempt in range(max_retries):
                     try:
@@ -692,7 +687,7 @@ class GarbageBot:
                         files = {'photo': ('qr.png', BytesIO(img_data), 'image/png')}
                         data = {
                             'chat_id': clean_chat_id,
-                            'caption': "🔄 *GarbageBot: Login Richiesto*\nInquadra questo QR per collegare il bot.",
+                            'caption': "🔄 *GarbageBot: Login Richiesto*\nInquadra questo QR entro pochi secondi per collegare il bot.",
                             'parse_mode': 'Markdown'
                         }
                         
@@ -702,18 +697,17 @@ class GarbageBot:
                             return
                         else:
                             self.log.error(f"❌ Errore API Telegram (HTTP {resp.status_code}): {resp.text}")
-                            # Se l'errore è 400 (Bad Request), è inutile riprovare
                             if resp.status_code == 400:
-                                return
+                                return # Se c'è un errore logico di Telegram, è inutile riprovare
                     except Exception as e:
-                        self.log.error(f"❌ Errore di rete. Container offline? Riprovo tra 5s... ({e})")
-                        time.sleep(5) # Attesa più lunga per dare tempo alla rete di salire
+                        self.log.warning(f"⚠️ Errore di rete (container appena avviato?). Riprovo tra 5s... ({e})")
+                        time.sleep(5)
 
-                self.log.error("❌ Impossibile inviare a Telegram dopo 10 tentativi.")
+                self.log.error("❌ Impossibile inviare a Telegram dopo multipli tentativi.")
             except Exception as e:
                 self.log.error(f"❌ Errore critico nel thread Telegram: {e}")
 
-        # Lancia il worker come demone (così non blocca la chiusura del bot)
+        # Eseguiamo il _worker come daemon thread separato
         threading.Thread(target=_worker, daemon=True).start()
 
     async def on_connected(self, client: NewAClient, __: ConnectedEv):
