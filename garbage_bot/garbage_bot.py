@@ -34,7 +34,7 @@ class AppConfig:
     LOG_LEVEL: int = logging.INFO
     COLOR_PRIMARY: str = "#356854"
     COLOR_ALTERNATE: str = "#f2f2f2"
-    ADMIN_NUMBERS: Tuple[str, ...] = ("393508950370", "117584041140339")
+    MOBILE_NUMBER: str = ""
     TELEGRAM_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
 
@@ -52,6 +52,9 @@ class AppConfig:
                 if "telegram_chat_id" in options:
                     self.TELEGRAM_CHAT_ID = str(options["telegram_chat_id"])
                     
+                if "bot_mobile_number" in options:
+                    self.MOBILE_NUMBER = str(options["bot_mobile_number"])
+
                 if "log_level" in options:
                     level_str = str(options["log_level"]).upper()
                     if level_str == "DEBUG":
@@ -512,6 +515,17 @@ class GarbageBot:
         except Exception as e:
             self.log.error(f"❌ Impossibile agganciare event.qr: {e}")
 
+        try:
+            # Accontentiamo il wrapper asincrono con una coroutine fittizia
+            from neonize.aioze.events import QREv
+            self.client.event(QREv)(self._dummy_qr_handler)
+        except ImportError:
+            pass
+
+    async def _dummy_qr_handler(self, client, ev):
+        """Handler asincrono vuoto per zittire gli errori interni di neonize."""
+        pass
+
     async def on_qr_generated(self, client, ev):
         """Gestore di Fallback se la callback nativa fallisce."""
         try:
@@ -775,15 +789,35 @@ class GarbageBot:
 
     def _is_admin(self, msg: MessageEv) -> bool:
         try:
+            # 1. Identifica l'oggetto JID corretto (Gruppo vs Chat Privata)
             if msg.Info.MessageSource.IsGroup:
-                sender = msg.Info.MessageSource.Sender.User
+                sender_jid = msg.Info.MessageSource.Sender
             else:
-                sender = msg.Info.MessageSource.Chat.User
-            if sender in config.ADMIN_NUMBERS: return True
-            if self.me and sender == self.me.User: return True
-            self.log.warning(f"Tentativo accesso admin negato da: {sender}")
+                sender_jid = msg.Info.MessageSource.Chat
+
+            # 2. Estrae il server e il numero (o ID)
+            server = getattr(sender_jid, 'Server', '')
+            sender_number = getattr(sender_jid, 'User', '')
+
+            # 3. BLOCCO LID: Ignora le identità tecniche interne di WhatsApp
+            if server == "lid":
+                self.log.debug(f"Ignorato ID tecnico WhatsApp (LID): {sender_number}")
+                return False
+
+            # 4. Controllo Autorizzazione (tramite Add-on di Home Assistant)
+            if sender_number in config.MOBILE_NUMBER: 
+                return True
+
+            # 5. Auto-autorizzazione (Se scrivi direttamente dal telefono che ospita il bot)
+            if self.me and getattr(self.me, 'User', '') == sender_number: 
+                return True
+
+            self.log.warning(f"Tentativo di accesso admin negato da: {sender_number}@{server}")
             return False
-        except Exception: return False
+
+        except Exception as e:
+            self.log.error(f"Errore durante la verifica dei permessi admin: {e}")
+            return False
 
     async def _get_sheet_context(self, msg: MessageEv) -> Optional[str]:
         if not msg.Info.MessageSource.IsGroup:
@@ -991,7 +1025,7 @@ class GarbageBot:
             is_admin = False
             is_grp_admin = await self._is_group_admin(chat_jid, sender)
         else:
-            is_admin = sender == self.me.User or sender in config.ADMIN_NUMBERS
+            is_admin = self._is_admin(chat_jid)
             is_grp_admin = True
 
         txt = self._get_detailed_help(is_admin, is_grp_admin)
