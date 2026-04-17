@@ -787,55 +787,78 @@ class GarbageBot:
             self.log.error(f"Errore verifica admin gruppo: {e}")
             return False
 
-    def _is_admin(self, msg) -> bool:
+    def _is_admin(self, msg_or_jid) -> bool:
         """
         Verifica se il mittente è un amministratore.
-        Versione blindata: gestisce LID e variazioni di maiuscole/minuscole nel Protobuf.
+        Accetta sia l'oggetto MessageEv intero, sia l'oggetto JID estratto.
         """
         try:
-            # 1. Navigazione sicura dell'albero del messaggio (fallback da Maiuscolo a minuscolo)
-            info = getattr(msg, 'info', getattr(msg, 'Info', None))
-            if not info:
-                return False
+            self.log.debug(f"[_is_admin] Inizio verifica. Tipo oggetto ricevuto: {type(msg_or_jid).__name__}")
 
-            msg_source = getattr(info, 'message_source', getattr(info, 'MessageSource', None))
-            if not msg_source:
-                return False
-
-            is_group = getattr(msg_source, 'is_group', getattr(msg_source, 'IsGroup', False))
-
-            # Estrazione del JID del mittente
-            if is_group:
-                sender_jid = getattr(msg_source, 'sender', getattr(msg_source, 'Sender', None))
+            # 1. Se l'oggetto passato ha già l'attributo 'User', è già un JID!
+            if hasattr(msg_or_jid, 'User') or hasattr(msg_or_jid, 'user'):
+                self.log.debug("[_is_admin] L'oggetto passato è direttamente un JID.")
+                sender_jid = msg_or_jid
             else:
-                sender_jid = getattr(msg_source, 'chat', getattr(msg_source, 'Chat', None))
+                self.log.debug("[_is_admin] L'oggetto è un messaggio, inizio navigazione albero...")
+                # 2. Altrimenti è un messaggio: navighiamo l'albero in modo sicuro
+                info = getattr(msg_or_jid, 'info', getattr(msg_or_jid, 'Info', None))
+                if not info:
+                    self.log.debug("[_is_admin] ❌ Fallimento: attributo 'info' non trovato.")
+                    return False
 
+                msg_source = getattr(info, 'message_source', getattr(info, 'MessageSource', None))
+                if not msg_source:
+                    self.log.debug("[_is_admin] ❌ Fallimento: attributo 'message_source' non trovato.")
+                    return False
+
+                # Usiamo SEMPRE 'Sender' che identifica l'autore fisico in tutte le chat
+                sender_jid = getattr(msg_source, 'sender', getattr(msg_source, 'Sender', None))
+                self.log.debug(f"[_is_admin] JID estratto da 'Sender': {getattr(sender_jid, 'user', getattr(sender_jid, 'User', 'Vuoto'))}")
+                
+                # Fallback estremo se Sender fosse vuoto
+                if not sender_jid or not str(getattr(sender_jid, 'user', getattr(sender_jid, 'User', ''))):
+                    sender_jid = getattr(msg_source, 'chat', getattr(msg_source, 'Chat', None))
+                    self.log.debug(f"[_is_admin] JID estratto da 'Chat' (Fallback): {getattr(sender_jid, 'user', getattr(sender_jid, 'User', 'Vuoto'))}")
+
+            # Se non abbiamo trovato nulla, interrompiamo
             if not sender_jid:
+                self.log.debug("[_is_admin] ❌ Nessun JID valido trovato dopo l'estrazione.")
                 return False
 
-            # 2. Estrazione sicura di server e numero (o ID)
+            # 3. Estrazione di server e numero
             server = getattr(sender_jid, 'server', getattr(sender_jid, 'Server', ''))
             sender_number = str(getattr(sender_jid, 'user', getattr(sender_jid, 'User', '')))
 
-            # 3. BLOCCO LID: Ignora le identità tecniche interne dei multi-dispositivo
+            self.log.debug(f"[_is_admin] Dati finali estratti -> Numero: '{sender_number}', Server: '{server}'")
+
+            # Ignoriamo i messaggi di sistema LID (multi-dispositivo)
             if server == "lid":
-                # Silenzioso, non inquina i log
+                self.log.debug("[_is_admin] 🛑 Ignorato messaggio di sistema (Server LID).")
                 return False
 
-            # 4. Controllo Autorizzazione (tramite configurazione di Home Assistant)
-            if sender_number in config.MOBILE_NUMBER: 
+            # Controllo se è tra gli admin di Home Assistant
+            config_mobile = str(config.MOBILE_NUMBER).strip()
+            self.log.debug(f"[_is_admin] Confronto: Mittente '{sender_number}' == Config '{config_mobile}'")
+            
+            if sender_number == config_mobile: 
+                self.log.debug("[_is_admin] ✅ Accesso consentito (Match con config.MOBILE_NUMBER).")
                 return True
 
-            # 5. Auto-autorizzazione (Se scrivi dal telefono stesso che ospita il bot)
+            # Controllo se è il bot stesso (auto-autorizzazione dal telefono host)
             me_user = str(getattr(self.me, 'user', getattr(self.me, 'User', '')))
+            self.log.debug(f"[_is_admin] Confronto auto-autorizzazione: Mittente '{sender_number}' == Bot '{me_user}'")
+            
             if self.me and sender_number == me_user: 
+                self.log.debug("[_is_admin] ✅ Accesso consentito (Auto-messaggio del bot).")
                 return True
 
-            self.log.warning(f"Tentativo di accesso admin negato da: {sender_number}@{server}")
+            # Log chiaro in caso di rifiuto per capire esattamente cosa sta leggendo il bot
+            self.log.warning(f"🚫 Accesso admin negato a: {sender_number}@{server}. (Admin configurato: {config.MOBILE_NUMBER})")
             return False
 
         except Exception as e:
-            self.log.error(f"Errore imprevisto durante la verifica admin: {e}")
+            self.log.error(f"❌ Errore imprevisto in _is_admin: {e}")
             return False
 
     async def _get_sheet_context(self, msg: MessageEv) -> Optional[str]:
@@ -1044,7 +1067,7 @@ class GarbageBot:
             is_admin = False
             is_grp_admin = await self._is_group_admin(chat_jid, sender)
         else:
-            is_admin = self._is_admin(chat_jid)
+            is_admin = self._is_admin(msg)
             is_grp_admin = True
 
         txt = self._get_detailed_help(is_admin, is_grp_admin)
