@@ -494,19 +494,6 @@ class GarbageBot:
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
 
-        # --- REGISTRAZIONE FONDAMENTALE PER VEDERE I QR ---
-        try:
-            from neonize.aioze.events import QREv
-            self.client.event(QREv)(self.on_qr_generated)
-        except ImportError:
-            pass
-
-        try:
-            from neonize.aioze.events import PairStatusEv
-            self.client.event(PairStatusEv)(self.on_qr_generated)
-        except ImportError:
-            pass
-
     async def on_qr_generated(self, client, ev):
         """Gestore ASINCRONO degli eventi QR. Intercetta e delega il lavoro pesante."""
         try:
@@ -566,7 +553,10 @@ class GarbageBot:
                 except Exception:
                     pass
 
-                # Connessione classica senza sub-loop
+                # 1. Attiviamo lo sniffer di emergenza prima di connetterci
+                self._start_qr_sniffer()
+
+                # 2. Connessione classica. Se si blocca, lo sniffer invierà comunque il QR!
                 await self.client.connect()
 
                 # --- GESTIONE ANTI-BLOCCO (CIRCUIT BREAKER) ---
@@ -619,7 +609,45 @@ class GarbageBot:
 
             self.log.info("⏳ In attesa di 10 secondi prima di ricollegare...")
             await asyncio.sleep(10)
-            
+
+    def _start_qr_sniffer(self):
+        """Spia lo standard output per intercettare il QR prima che l'event loop venga bloccato."""
+        import sys
+        import threading
+        
+        # Salviamo l'output originale per non rompere i log di sistema
+        original_stdout = sys.stdout
+
+        class QRSniffer:
+            def __init__(self, original_stream, trigger_func):
+                self.original_stream = original_stream
+                self.trigger_func = trigger_func
+                self.buffer = ""
+                # Il QR Code inizia sempre con "1@" nelle versioni recenti di whatsmeow
+                # o con lunghe stringhe base64.
+                
+            def write(self, data):
+                self.original_stream.write(data)
+                
+                # Se è in corso una scansione o non ci interessa, skippiamo per performance
+                if "1@" in data or len(data.strip()) > 100: 
+                    self.buffer += data
+                    
+                    # Cerca una stringa densa (senza spazi) tipica del payload QR
+                    words = data.split()
+                    for word in words:
+                        # Le stringhe QR di whatsmeow sono sempre più lunghe di 100 caratteri
+                        # e contengono il separatore ','
+                        if len(word) > 100 and "," in word:
+                            self.trigger_func(word.strip())
+                            self.buffer = "" # Svuota dopo averlo trovato
+
+            def flush(self):
+                self.original_stream.flush()
+
+        # Iniziamo a spiare!
+        sys.stdout = QRSniffer(original_stdout, self._fire_telegram_thread_sync)
+    
     def _fire_telegram_thread_sync(self, qr_text: str):
         """Thread puro di Python per gestire l'invio HTTP in modo isolato."""
         import threading
