@@ -494,7 +494,6 @@ class GarbageBot:
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
 
-        # --- LA CHIAVE D'ORO: OVERRIDE DELLA CALLBACK SINCRONA NATIVA ---
         # Sfruttiamo il metodo event.qr() esposto dal modulo events di neonize.
         # Questo sostituisce la stampa a schermo con la nostra funzione,
         # agendo in modo totalmente sincrono e bypassando il blocco di asyncio!
