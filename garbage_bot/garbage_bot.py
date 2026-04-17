@@ -790,11 +790,23 @@ class GarbageBot:
     def _is_admin(self, msg_or_jid) -> bool:
         """
         Verifica se il mittente è un amministratore.
-        Controlla sia Sender che Chat per bypassare le identità LID di WhatsApp Web.
+        Supporta il controllo IsFromMe per bypassare i LID di WhatsApp Web.
         """
         try:
             self.log.debug(f"[_is_admin] Inizio verifica. Tipo: {type(msg_or_jid).__name__}")
             
+            if not (hasattr(msg_or_jid, 'User') or hasattr(msg_or_jid, 'user')):
+                info = getattr(msg_or_jid, 'info', getattr(msg_or_jid, 'Info', None))
+                if info:
+                    msg_source = getattr(info, 'message_source', getattr(info, 'MessageSource', None))
+                    if msg_source:
+                        # Se il messaggio proviene dal tuo stesso account (es. te stesso da WA Web)
+                        is_from_me = getattr(msg_source, 'is_from_me', getattr(msg_source, 'IsFromMe', False))
+                        if is_from_me:
+                            self.log.debug("[_is_admin] ✅ Accesso consentito: Messaggio inviato dal tuo stesso account (IsFromMe=True).")
+                            return True
+
+            # --- PROCEDURA STANDARD PER I JID O MESSAGGI ESTERNI ---
             jids_to_check = []
 
             # 1. Se è direttamente un JID
@@ -802,19 +814,15 @@ class GarbageBot:
                 jids_to_check.append(msg_or_jid)
             else:
                 # 2. Se è un messaggio, estraiamo ENTRAMBI i JID (Sender e Chat)
-                info = getattr(msg_or_jid, 'info', getattr(msg_or_jid, 'Info', None))
-                if not info:
-                    return False
-                
-                msg_source = getattr(info, 'message_source', getattr(info, 'MessageSource', None))
-                if not msg_source:
-                    return False
-
-                sender = getattr(msg_source, 'sender', getattr(msg_source, 'Sender', None))
-                chat = getattr(msg_source, 'chat', getattr(msg_source, 'Chat', None))
-                
-                if sender: jids_to_check.append(sender)
-                if chat: jids_to_check.append(chat)
+                if getattr(msg_or_jid, 'info', None): # Ricarichiamo per sicurezza
+                    info = getattr(msg_or_jid, 'info', getattr(msg_or_jid, 'Info', None))
+                    msg_source = getattr(info, 'message_source', getattr(info, 'MessageSource', None))
+                    
+                    sender = getattr(msg_source, 'sender', getattr(msg_source, 'Sender', None))
+                    chat = getattr(msg_source, 'chat', getattr(msg_source, 'Chat', None))
+                    
+                    if sender: jids_to_check.append(sender)
+                    if chat: jids_to_check.append(chat)
 
             config_mobile = str(config.MOBILE_NUMBER).strip()
             me_user = str(getattr(self.me, 'user', getattr(self.me, 'User', '')))
@@ -827,14 +835,14 @@ class GarbageBot:
                 self.log.debug(f"[_is_admin] Analizzo JID -> Numero: '{user}', Server: '{server}'")
                 
                 if server == "lid":
-                    continue # Ignoriamo gli ID tecnici dei multi-dispositivo
+                    continue # Ignoriamo gli ID tecnici
                 
                 # Match con il numero in configurazione
                 if user == config_mobile:
                     self.log.debug(f"[_is_admin] ✅ Match con MOBILE_NUMBER su {user}@{server}")
                     return True
                     
-                # Auto-autorizzazione
+                # Auto-autorizzazione per sicurezza aggiuntiva
                 if self.me and user == me_user:
                     self.log.debug(f"[_is_admin] ✅ Match con se stesso (me_user) su {user}@{server}")
                     return True
