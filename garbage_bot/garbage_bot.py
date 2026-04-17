@@ -522,14 +522,14 @@ class GarbageBot:
         except Exception as e:
             self.log.error(f"Errore estrazione QR da evento: {e}")
 
-    def on_logged_out(self, client, ev):
-        """Viene chiamato quando l'utente scollega il dispositivo. 
-        Sincrono per evitare accavallamenti asincroni."""
+    async def on_logged_out(self, client, ev):
+        """Viene chiamato quando l'utente scollega il dispositivo.
+        Deve essere 'async def' per accontentare il wrapper interno di neonize."""
         self.log.critical("🚫 Dispositivo rimosso volontariamente da WhatsApp (LoggedOut)!")
         
-        # Premiamo l'interruttore per sbloccare il ciclo start() e basta.
-        # NESSUN disconnect o os.remove qui!
-        self.session_interrupted.set()
+        # Premiamo l'interruttore in modo thread-safe per il ciclo start()
+        loop = asyncio.get_running_loop()
+        loop.call_soon_threadsafe(self.session_interrupted.set)
 
     async def _destroy_session(self):
         """Elimina il database di sessione gestendo eventuali lock (race conditions) di SQLite."""
@@ -558,8 +558,6 @@ class GarbageBot:
         while True:
             try:
                 self.log.info("🔌 Tentativo di connessione a WhatsApp...")
-                
-                # Riarmare l'interruttore all'avvio del ciclo
                 self.session_interrupted.clear() 
                 
                 # --- FIX BUG NEONIZE PYTHON 3.12+ ---
@@ -570,24 +568,40 @@ class GarbageBot:
                     pass
                 # ------------------------------------
 
-                await self.client.connect()
+                # Il metodo connect() blocca l'event loop finché non viene scansionato il QR.
+                # Lo incapsuliamo in un thread di sistema isolato per mantenere il bot reattivo.
+                def _bg_connect():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        # Gestisce sia se la libreria lo definisce async, sia sync
+                        res = self.client.connect()
+                        if asyncio.iscoroutine(res):
+                            loop.run_until_complete(res)
+                    except Exception as e:
+                        return e
+                    finally:
+                        loop.close()
+                    return None
+
+                # Attendiamo la connessione in background senza congelare asyncio!
+                connect_err = await asyncio.to_thread(_bg_connect)
+                if connect_err:
+                    raise connect_err
+                # --------------------------------------------------------------
                 
                 # --- GESTIONE ANTI-BLOCCO (CIRCUIT BREAKER) ---
-                # Creiamo due task in parallelo: l'idle nativo e il nostro interruttore
                 idle_task = asyncio.create_task(self.client.idle())
                 interrupt_task = asyncio.create_task(self.session_interrupted.wait())
 
-                # Aspettiamo che il primo dei due finisca (FIRST_COMPLETED)
                 done, pending = await asyncio.wait(
                     [idle_task, interrupt_task],
                     return_when=asyncio.FIRST_COMPLETED
                 )
 
-                # Se l'interruttore è scattato, idle_task è ancora bloccato nei 'pending'. Lo annulliamo.
                 for task in pending:
                     task.cancel()
                     
-                # Solleviamo eventuali eccezioni reali catturate da idle() (ignorando le cancellazioni)
                 for task in done:
                     if task.exception() and not isinstance(task.exception(), asyncio.CancelledError):
                         raise task.exception()
@@ -597,49 +611,34 @@ class GarbageBot:
                 err_str = str(e).lower()
                 self.log.error(f"💥 Errore rilevato dal socket: {e}")
                 
-                # Intercetta le disconnessioni fatali (rete, EOF, sessione non valida)
                 if any(x in err_str for x in ["405", "eof", "outdated", "reader", "readonly", "closed"]):
                     self.log.warning("⚠️ Sessione interrotta per errore fatale. Inizio procedura di ripristino d'emergenza...")
-                    
                     try:
                         await self.client.disconnect()
                     except Exception as disconnect_err:
                         self.log.debug(f"Errore forzatura disconnessione: {disconnect_err}")
                         
-                    # Pausa breve per permettere ai thread di sistema di sbloccarsi
                     await asyncio.sleep(1)
-                    
                     await self._destroy_session()
                     self._create_client()
-                    
                     self.log.info("⚡ Riavvio immediato per generazione QR post-crash...")
                     continue 
 
             # --- TRIGGER POST LOGOUT PULITO (DISPOSITIVO RIMOSSO) ---
-            # Questo blocco si attiva SOLO se è stato on_logged_out a far scattare l'interruttore
             if self.session_interrupted.is_set():
                 self.log.warning("⏳ Disconnessione volontaria rilevata. Attendo 3 secondi lo spegnimento della libreria Go interna...")
-                
-                # 1. Chiudiamo il socket in modo pulito
                 try:
                     await self.client.disconnect()
                 except Exception as e:
                     self.log.debug(f"Errore disconnessione controllata: {e}")
                 
-                # 2. PAUSA SALVAVITA: Diamo il tempo a whatsmeow di chiudere SQLite in background
-                # Questo evita definitivamente il "panic: attempt to write a readonly database"
                 await asyncio.sleep(3)
-                
-                # 3. Ora che la libreria Go è ferma, cancelliamo il DB in sicurezza
                 await self._destroy_session()
                 
                 self.log.info("⚡ DB rimosso con successo. Ricreo il client e innesco la riconnessione...")
-                
-                # 4. Ricrea il client (che si predispone per ascoltare il nuovo QR) e riparte
                 self._create_client()
                 continue
 
-            # Se la rete cade ma la sessione è valida (nessun errore critico e nessun logout)
             self.log.info("⏳ In attesa di 10 secondi prima di ricollegare...")
             await asyncio.sleep(10)
     
