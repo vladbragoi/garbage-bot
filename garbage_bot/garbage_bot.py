@@ -790,77 +790,62 @@ class GarbageBot:
     def _is_admin(self, msg_or_jid) -> bool:
         """
         Verifica se il mittente è un amministratore.
-        Accetta sia l'oggetto MessageEv intero, sia l'oggetto JID estratto.
+        Controlla sia Sender che Chat per bypassare le identità LID di WhatsApp Web.
         """
         try:
-            self.log.debug(f"[_is_admin] Inizio verifica. Tipo oggetto ricevuto: {type(msg_or_jid).__name__}")
+            self.log.debug(f"[_is_admin] Inizio verifica. Tipo: {type(msg_or_jid).__name__}")
+            
+            jids_to_check = []
 
-            # 1. Se l'oggetto passato ha già l'attributo 'User', è già un JID!
+            # 1. Se è direttamente un JID
             if hasattr(msg_or_jid, 'User') or hasattr(msg_or_jid, 'user'):
-                self.log.debug("[_is_admin] L'oggetto passato è direttamente un JID.")
-                sender_jid = msg_or_jid
+                jids_to_check.append(msg_or_jid)
             else:
-                self.log.debug("[_is_admin] L'oggetto è un messaggio, inizio navigazione albero...")
-                # 2. Altrimenti è un messaggio: navighiamo l'albero in modo sicuro
+                # 2. Se è un messaggio, estraiamo ENTRAMBI i JID (Sender e Chat)
                 info = getattr(msg_or_jid, 'info', getattr(msg_or_jid, 'Info', None))
                 if not info:
-                    self.log.debug("[_is_admin] ❌ Fallimento: attributo 'info' non trovato.")
                     return False
-
+                
                 msg_source = getattr(info, 'message_source', getattr(info, 'MessageSource', None))
                 if not msg_source:
-                    self.log.debug("[_is_admin] ❌ Fallimento: attributo 'message_source' non trovato.")
                     return False
 
-                # Usiamo SEMPRE 'Sender' che identifica l'autore fisico in tutte le chat
-                sender_jid = getattr(msg_source, 'sender', getattr(msg_source, 'Sender', None))
-                self.log.debug(f"[_is_admin] JID estratto da 'Sender': {getattr(sender_jid, 'user', getattr(sender_jid, 'User', 'Vuoto'))}")
+                sender = getattr(msg_source, 'sender', getattr(msg_source, 'Sender', None))
+                chat = getattr(msg_source, 'chat', getattr(msg_source, 'Chat', None))
                 
-                # Fallback estremo se Sender fosse vuoto
-                if not sender_jid or not str(getattr(sender_jid, 'user', getattr(sender_jid, 'User', ''))):
-                    sender_jid = getattr(msg_source, 'chat', getattr(msg_source, 'Chat', None))
-                    self.log.debug(f"[_is_admin] JID estratto da 'Chat' (Fallback): {getattr(sender_jid, 'user', getattr(sender_jid, 'User', 'Vuoto'))}")
+                if sender: jids_to_check.append(sender)
+                if chat: jids_to_check.append(chat)
 
-            # Se non abbiamo trovato nulla, interrompiamo
-            if not sender_jid:
-                self.log.debug("[_is_admin] ❌ Nessun JID valido trovato dopo l'estrazione.")
-                return False
-
-            # 3. Estrazione di server e numero
-            server = getattr(sender_jid, 'server', getattr(sender_jid, 'Server', ''))
-            sender_number = str(getattr(sender_jid, 'user', getattr(sender_jid, 'User', '')))
-
-            self.log.debug(f"[_is_admin] Dati finali estratti -> Numero: '{sender_number}', Server: '{server}'")
-
-            # Ignoriamo i messaggi di sistema LID (multi-dispositivo)
-            if server == "lid":
-                self.log.debug("[_is_admin] 🛑 Ignorato messaggio di sistema (Server LID).")
-                return False
-
-            # Controllo se è tra gli admin di Home Assistant
             config_mobile = str(config.MOBILE_NUMBER).strip()
-            self.log.debug(f"[_is_admin] Confronto: Mittente '{sender_number}' == Config '{config_mobile}'")
-            
-            if sender_number == config_mobile: 
-                self.log.debug("[_is_admin] ✅ Accesso consentito (Match con config.MOBILE_NUMBER).")
-                return True
-
-            # Controllo se è il bot stesso (auto-autorizzazione dal telefono host)
             me_user = str(getattr(self.me, 'user', getattr(self.me, 'User', '')))
-            self.log.debug(f"[_is_admin] Confronto auto-autorizzazione: Mittente '{sender_number}' == Bot '{me_user}'")
-            
-            if self.me and sender_number == me_user: 
-                self.log.debug("[_is_admin] ✅ Accesso consentito (Auto-messaggio del bot).")
-                return True
 
-            # Log chiaro in caso di rifiuto per capire esattamente cosa sta leggendo il bot
-            self.log.warning(f"🚫 Accesso admin negato a: {sender_number}@{server}. (Admin configurato: {config.MOBILE_NUMBER})")
+            # 3. Controlliamo tutti i JID trovati
+            for jid in jids_to_check:
+                server = getattr(jid, 'server', getattr(jid, 'Server', ''))
+                user = str(getattr(jid, 'user', getattr(jid, 'User', '')))
+                
+                self.log.debug(f"[_is_admin] Analizzo JID -> Numero: '{user}', Server: '{server}'")
+                
+                if server == "lid":
+                    continue # Ignoriamo gli ID tecnici dei multi-dispositivo
+                
+                # Match con il numero in configurazione
+                if user == config_mobile:
+                    self.log.debug(f"[_is_admin] ✅ Match con MOBILE_NUMBER su {user}@{server}")
+                    return True
+                    
+                # Auto-autorizzazione
+                if self.me and user == me_user:
+                    self.log.debug(f"[_is_admin] ✅ Match con se stesso (me_user) su {user}@{server}")
+                    return True
+
+            self.log.warning(f"🚫 Accesso admin negato. Nessun match valido trovato. (Admin: {config_mobile})")
             return False
 
         except Exception as e:
-            self.log.error(f"❌ Errore imprevisto in _is_admin: {e}")
+            self.log.error(f"❌ Errore in _is_admin: {e}")
             return False
-
+    
     async def _get_sheet_context(self, msg: MessageEv) -> Optional[str]:
         if not msg.Info.MessageSource.IsGroup:
             await self._reply("ℹ️ Comando disponibile solo nei gruppi.", msg)
