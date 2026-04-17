@@ -486,19 +486,14 @@ class GarbageBot:
         self._create_client()
 
     def _create_client(self):
-        """Inizializza il client Neonize e registra gli eventi e le callback."""
+        """Inizializza il client Neonize."""
         self.log.info("Inizializzazione client WhatsApp...")
         
-        # METODO 1: Callback diretta (intercetta la stampa a terminale di neonize)
+        # Quando neonize genera un QR, chiamerà questa funzione sincrona.
+        # Noi scarichiamo SUBITO il lavoro su un Thread indipendente.
         def my_qr_callback(client_instance, qr_text: str):
-            self.log.warning("⚠️ QR Code intercettato via Callback nativa!")
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(self._send_qr_telegram(qr_text))
-            except Exception as e:
-                self.log.error(f"Errore lancio task QR da callback: {e}")
+            self._fire_telegram_thread_sync(qr_text)
 
-        # Inizializziamo il client passando la callback (ignorando l'errore se la tua versione non lo supporta)
         try:
             self.client = NewAClient(config.DB_PATH_NEONIZE, onQr=my_qr_callback)
         except TypeError:
@@ -507,101 +502,7 @@ class GarbageBot:
         self.client.event(ConnectedEv)(self.on_connected)
         self.client.event(MessageEv)(self.on_message)
         self.client.event(LoggedOutEv)(self.on_logged_out)
-        self.client.event(PairStatusEv)(self.on_qr_generated)
 
-    async def on_qr_generated(self, client: NewAClient, ev_or_string):
-        """Gestisce il QR generato, applicando un antirimbalzo."""
-        import time 
-        try:
-            # Estrazione universale
-            if isinstance(ev_or_string, str):
-                qr_string = ev_or_string
-            else:
-                qr_string = getattr(ev_or_string, 'String', getattr(ev_or_string, 'QR', str(ev_or_string)))
-            
-            if not qr_string or len(qr_string) < 20:
-                return
-                
-            # --- MECCANISMO DI DEBOUNCE (ANTIRIMBALZO) ---
-            current_time = time.time()
-            last_time = getattr(self, '_last_qr_time', 0)
-            
-            if current_time - last_time < 5:
-                return
-                
-            self._last_qr_time = current_time
-            # ---------------------------------------------
-
-            self.log.warning("⚠️ Nuovo QR rilevato! Provo a inviarlo subito a Telegram...")
-            # L'uso di create_task è fondamentale: NON BLOCCA L'EVENT LOOP della libreria neonize
-            asyncio.create_task(self._send_qr_telegram(qr_string))
-            
-        except Exception as e:
-            self.log.error(f"Errore durante l'intercettazione del QR: {e}")
-
-    async def _send_qr_telegram(self, qr_text: str):
-        """Genera l'immagine del QR e la invia via Telegram con Retry robusto."""
-        if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
-            self.log.error("Telegram non configurato in Home Assistant. Impossibile inviare QR.")
-            return
-
-        def _send():
-            try:
-                # 1. Generazione immagine QR
-                qr = qrcode.QRCode(version=1, box_size=10, border=5)
-                qr.add_data(qr_text)
-                qr.make(fit=True)
-                img = qr.make_image(fill_color="black", back_color="white")
-                
-                buf = BytesIO()
-                img.save(buf, format='PNG')
-                buf.seek(0)
-                img_data = buf.getvalue()
-
-                clean_chat_id = str(config.TELEGRAM_CHAT_ID).strip() 
-                url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendPhoto"
-                
-                # 2. Meccanismo di RETRY ATTIVO per problemi di rete (Errno 101)
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        self.log.debug(f"⚙️ [DEBUG TELEGRAM] Tentativo {attempt+1}/{max_retries} di invio a Telegram...")
-                        
-                        # Creiamo un payload "fresco" ad ogni tentativo
-                        files = {'photo': ('qr.png', BytesIO(img_data), 'image/png')}
-                        data = {
-                            'chat_id': clean_chat_id,
-                            'caption': "🔄 *GarbageBot: Login Richiesto*\nInquadra questo QR entro pochi secondi per collegare il bot.",
-                            'parse_mode': 'Markdown'
-                        }
-                        
-                        # Timeout basso (5s connessione, 10s lettura) per evitare congelamenti asincroni
-                        resp = requests.post(url, files=files, data=data, timeout=(5, 10))
-                        
-                        if resp.status_code == 200:
-                            self.log.info("✅ QR Code inviato correttamente su Telegram.")
-                            return # Esce dalla funzione appena ci riesce
-                        else:
-                            self.log.error(f"❌ Errore API Telegram (HTTP {resp.status_code}): {resp.text}")
-                            return # Se è un errore 400 (es. chat not found), non ha senso ritentare
-                            
-                    except requests.exceptions.ConnectionError as ce:
-                        self.log.error(f"❌ Errore di rete (Riprovo tra 2s): {ce}")
-                        import time
-                        time.sleep(2)
-                    except requests.exceptions.Timeout:
-                        self.log.warning(f"⚠️ Timeout connessione Telegram. Riprovo tra 2s...")
-                        import time
-                        time.sleep(2)
-
-                self.log.error("❌ Impossibile raggiungere i server di Telegram dopo multipli tentativi.")
-
-            except Exception as e:
-                self.log.exception(f"❌ ECCEZIONE critica durante generazione/invio QR: {e}")
-
-        # Eseguiamo in un thread separato
-        await asyncio.to_thread(_send)
-    
     async def on_logged_out(self, client: NewAClient, ev: LoggedOutEv):
         """Viene chiamato quando l'utente scollega il dispositivo da WhatsApp Web/App."""
         self.log.critical("🚫 Dispositivo rimosso volontariamente da WhatsApp (LoggedOut)!")
@@ -702,6 +603,73 @@ class GarbageBot:
 
             self.log.info("⏳ In attesa di 10 secondi prima di ricollegare...")
             await asyncio.sleep(10)
+    
+    def _fire_telegram_thread_sync(self, qr_text: str):
+        """Metodo SINCRONO che parte in un Thread separato per non essere mai bloccato da asyncio."""
+        import threading
+        import time
+
+        def _worker():
+            try:
+                # --- ANTIRIMBALZO ---
+                current_time = time.time()
+                last_time = getattr(self, '_last_qr_time', 0)
+                if current_time - last_time < 5:
+                    return
+                self._last_qr_time = current_time
+                # --------------------
+
+                if not qr_text or len(qr_text) < 20:
+                    return
+
+                self.log.warning("⚠️ Nuovo QR rilevato! Provo a inviarlo subito a Telegram dal Thread di emergenza...")
+                
+                # Chiamata bloccante (sincrona) a requests
+                import requests
+                import qrcode
+                from io import BytesIO
+
+                if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
+                    self.log.error("Telegram non configurato in Home Assistant. Impossibile inviare QR.")
+                    return
+
+                qr = qrcode.QRCode(version=1, box_size=10, border=5)
+                qr.add_data(qr_text)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+                
+                buf = BytesIO()
+                img.save(buf, format='PNG')
+                img_data = buf.getvalue()
+
+                clean_chat_id = str(config.TELEGRAM_CHAT_ID).strip() 
+                url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendPhoto"
+                
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        files = {'photo': ('qr.png', BytesIO(img_data), 'image/png')}
+                        data = {
+                            'chat_id': clean_chat_id,
+                            'caption': "🔄 *GarbageBot: Login Richiesto*\nInquadra questo QR entro pochi secondi per collegare il bot.",
+                            'parse_mode': 'Markdown'
+                        }
+                        
+                        resp = requests.post(url, files=files, data=data, timeout=5)
+                        if resp.status_code == 200:
+                            self.log.info("✅ QR Code inviato correttamente su Telegram.")
+                            return
+                        else:
+                            self.log.error(f"❌ Errore API Telegram: {resp.text}")
+                            return
+                    except Exception as e:
+                        time.sleep(2)
+
+            except Exception as e:
+                self.log.error(f"❌ Errore critico nel thread Telegram: {e}")
+
+        # Lancia il worker in un vero Thread di sistema
+        threading.Thread(target=_worker, daemon=True).start()
 
     async def on_connected(self, client: NewAClient, __: ConnectedEv):
         self.log.info("⚡ Bot Connesso!")
