@@ -1,19 +1,23 @@
 # 🤖 WhatsApp Garbage Bot
 
-**Bot WhatsApp intelligente per la gestione automatica di turni spazzatura e calendario con integrazione Google Sheets.**
+**Bot WhatsApp intelligente per la gestione automatica di turni spazzatura e calendario con integrazione Google Sheets**
 
 Monitora 24/7, genera calendari automaticamente, e mantiene il tuo condominio organizzato via WhatsApp.
+
+> ⭐ **Consigliato per Home Assistant OS**. Supporta anche installazione locale su Linux/Raspberry Pi.
 
 ---
 
 ## ✨ Caratteristiche Principali
 
-- 📅 **Calendario intelligente**: Monitoramento continuo con generazione automatica di cicli
-- 📱 **Comandi WhatsApp**: Interroga il calendario dal gruppo
-- 🔔 **Promemoria giornalieri**: Notifica chi è di turno ogni mattina
+- 🏠 **Ottimizzato per Home Assistant**: Funziona come add-on nativo con container Docker
+- 📅 **Calendario intelligente**: Monitoraggio continuo con generazione automatica di cicli
+- 📱 **Comandi WhatsApp**: Interroga il calendario dal gruppo in tempo reale
+- 🔔 **Promemoria giornalieri**: Notifica automatica chi è di turno ogni mattina
 - 📊 **Google Sheets integrato**: Gestione dati su foglio condiviso
-- 🏠 **Multi-ambiente**: Supporto per Raspberry Pi, Linux e Home Assistant OS
+- 🚀 **Multi-ambiente**: Supporto per Home Assistant OS, Raspberry Pi e Linux
 - 🔐 **Sicuro**: Autenticazione Google con credenziali dedicate
+- 📨 **Notifiche Telegram**: Allerta istantanea per errori e QR code
 
 ---
 
@@ -42,31 +46,44 @@ Monitora 24/7, genera calendari automaticamente, e mantiene il tuo condominio or
 
 ### 1️⃣ Scegli il tuo ambiente
 
-- **🏠 Home Assistant OS**: Vedi [INSTALL_HOMEASSISTANT.md](INSTALL_HOMEASSISTANT.md)
-- **🐧 Linux / Raspberry Pi**: Vedi [INSTALL_LOCAL.md](INSTALL_LOCAL.md)
+**🏠 [Home Assistant OS](INSTALL_HOMEASSISTANT.md) (Consigliato)**
+- Installazione come add-on nativo
+- Zero configurazione dei servizi
+- Gestione interfaccia web integrata
+- Aggiornamenti automatici
+
+**🐧 [Linux / Raspberry Pi](INSTALL_LOCAL.md)**
+- Installazione manuale con Python
+- Perfetto se hai già un server Linux
+- Richiede configurazione systemd
+
+_Se non sai quale scegliere, usa **Home Assistant OS**!_
 
 ### 2️⃣ Configura Google Sheets
 
 1. Prepara un Google Sheet con la struttura indicata in [SETUP_CALENDARIO.md](SETUP_CALENDARIO.md)
 2. Ottieni le credenziali Google (Service Account JSON)
-3. Avvia il bot
+3. Carica il file nel bot (vedi guida installazione)
 
-### 3️⃣ Configura il bot
+### 3️⃣ Configura il Primo Gruppo
 
-Nel primo gruppo:
+Invia il comando nel gruppo WhatsApp:
 ```
 /config https://chat.whatsapp.com/xxxxx https://docs.google.com/spreadsheets/d/xxxxx
 ```
+
+✅ Fatto! Il bot è pronto a gestire i turni!
 
 ---
 
 ## 📚 Documentazione Completa
 
-| Documento | Contenuto |
-|-----------|----------|
-| [SETUP_CALENDARIO.md](SETUP_CALENDARIO.md) | Struttura Google Sheets + configurazione calendario |
-| [INSTALL_LOCAL.md](INSTALL_LOCAL.md) | Installazione locale (Raspberry Pi, Linux) |
-| [INSTALL_HOMEASSISTANT.md](INSTALL_HOMEASSISTANT.md) | Installazione come Add-on Home Assistant |
+| Documento | Descrizione |
+|-----------|-------------|
+| **[📌 INSTALL_HOMEASSISTANT.md](INSTALL_HOMEASSISTANT.md)** | **[CONSIGLIATO]** Guida di installazione come add-on HA - Segui questa se non sai da dove iniziare |
+| [📋 SETUP_CALENDARIO.md](SETUP_CALENDARIO.md) | Struttura Google Sheets + configurazione calendario turni |
+| [🐧 INSTALL_LOCAL.md](INSTALL_LOCAL.md) | Installazione alternativa per Linux/Raspberry Pi |
+| [⬅️ README principale](../README.md) | Repository e overview generale del progetto |
 
 ---
 

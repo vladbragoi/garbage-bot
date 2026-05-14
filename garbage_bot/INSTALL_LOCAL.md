@@ -1,5 +1,7 @@
 # 🐧 Installazione Locale - Linux / Raspberry Pi
 
+**⚠️ Nota:** Questa è un'installazione alternativa. Se usi **Home Assistant**, é consigliato installare il bot come [add-on ufficiale](INSTALL_HOMEASSISTANT.md).
+
 Guida per installare ed eseguire **WhatsApp Garbage Bot** su **Linux** (incluso Raspberry Pi OS).
 
 ---
@@ -106,6 +108,111 @@ ls -la credentials.json
 
 ---
 
+## ⚙️ Step 4b: Configurazione Variabili del Bot
+
+Il bot supporta le stesse variabili configurabili di Home Assistant attraverso **variabili d'ambiente** (consigliato per sicurezza) o tramite il file `options.json`.
+
+### Prioritario: Variabili d'Ambiente (Consigliato ⭐)
+
+Le variabili d'ambiente hanno **priorità** rispetto a options.json e non vengono salvate persistentemente.
+
+#### Esecuzione Manuale
+
+```bash
+# Imposta le variabili e avvia il bot
+export LOG_LEVEL="info"
+export TELEGRAM_TOKEN="123456789:ABCDefGhijKlmnoPqrstUvwxyz"
+export TELEGRAM_CHAT_ID="987654321"
+export BOT_MOBILE_NUMBER="393501234567"
+
+python3 garbage_bot.py
+```
+
+#### Con Systemd
+
+Modifica il file di servizio:
+
+```bash
+sudo nano /etc/systemd/system/whatsapp_bot.service
+```
+
+Nella sezione `[Service]` aggiungi:
+
+```ini
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/whatsapp-garbage-bot
+Environment="PATH=/home/pi/whatsapp-garbage-bot/venv/bin"
+Environment="PYTHONUNBUFFERED=1"
+# Aggiungi le variabili d'ambiente (facoltative - ometti se non usate):
+Environment="LOG_LEVEL=info"
+Environment="TELEGRAM_TOKEN=123456789:ABCDefGhijKlmnoPqrstUvwxyz"
+Environment="TELEGRAM_CHAT_ID=987654321"
+Environment="BOT_MOBILE_NUMBER=393501234567"
+ExecStart=/home/pi/whatsapp-garbage-bot/venv/bin/python3 garbage_bot.py
+Restart=on-failure
+RestartSec=10
+```
+
+Poi riavvia:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart whatsapp_bot
+```
+
+#### Con Docker
+
+```bash
+docker run -d \
+  --name whatsapp_bot \
+  -v ~/whatsapp_bot_data:/data \
+  -e LOG_LEVEL="info" \
+  -e TELEGRAM_TOKEN="123456789:ABCDefGhijKlmnoPqrstUvwxyz" \
+  -e TELEGRAM_CHAT_ID="987654321" \
+  -e BOT_MOBILE_NUMBER="393501234567" \
+  whatsapp-garbage-bot
+```
+
+### Variabili d'Ambiente Disponibili
+
+| Variabile | Tipo | Default | Descrizione |
+|-----------|------|---------|-------------|
+| `LOG_LEVEL` | `DEBUG\|INFO\|WARNING\|ERROR` | `INFO` | Livello di dettaglio dei log |
+| `TELEGRAM_TOKEN` | stringa | (vuoto) | Token bot Telegram (da @BotFather) |
+| `TELEGRAM_CHAT_ID` | stringa | (vuoto) | Chat ID Telegram (da @RawDataBot) |
+| `BOT_MOBILE_NUMBER` | stringa | (vuoto) | Numero WhatsApp del bot (prefisso int. senza +) |
+
+### Alternativa: File options.json (Fallback)
+
+Se non usi variabili d'ambiente, il bot legge da `/data/options.json`:
+
+```json
+{
+  "log_level": "info",
+  "telegram_token": "123456789:ABCDefGhijKlmnoPqrstUvwxyz",
+  "telegram_chat_id": "987654321",
+  "bot_mobile_number": "393501234567"
+}
+```
+
+⚠️ **Nota:** Le variabili d'ambiente sovrascrivono il file options.json! Usa le env vars per maggiore sicurezza.
+
+### Come Ottenere i Dati Telegram
+
+1. **Token Bot Telegram:**
+   - Apri Telegram e scrivi a [@BotFather](https://t.me/botfather)
+   - Invia `/start` → `/newbot`
+   - Dai un nome e username
+   - Copia il token (es: `123456789:ABCDefGhijKlmnoPqrstUvwxyz`)
+
+2. **Chat ID:**
+   - Scrivi a [@RawDataBot](https://t.me/rawdatabot)
+   - Invia un messaggio qualsiasi
+   - Ti risponde con il tuo ID sotto `"id": XXXXX`
+
+---
+
 ## 🚀 Step 5: Avvia il Bot
 
 ### Prima Esecuzione
@@ -189,6 +296,7 @@ User=pi  # Cambia se il tuo username è diverso
 WorkingDirectory=/home/pi/whatsapp-garbage-bot  # Cambia il path
 Environment="PATH=/home/pi/whatsapp-garbage-bot/venv/bin"
 Environment="PYTHONUNBUFFERED=1"
+# Le variabili di configurazione sono lette da /data/options.json
 ExecStart=/home/pi/whatsapp-garbage-bot/venv/bin/python3 garbage_bot.py
 Restart=on-failure
 RestartSec=10
@@ -198,6 +306,34 @@ SyslogIdentifier=whatsapp_bot
 
 [Install]
 WantedBy=multi-user.target
+```
+
+### Configurare le Variabili per systemd
+
+Se stai usando systemd e vuoi configurare il bot, puoi:
+
+**Opzione A: Usare variabili d'ambiente (Consigliato)**
+
+Vedi la sezione "[Con Systemd](#con-systemd)" sopra per impostare le env vars direttamente nel service file.
+
+**Opzione B: Usare file options.json**
+
+Crea `/data/options.json` come descritto nel [Step 4b](#-step-4b-configurazione-variabili-del-bot):
+
+```json
+{
+  "log_level": "info",
+  "telegram_token": "123456789:ABCDefGhijKlmnoPqrstUvwxyz",
+  "telegram_chat_id": "987654321",
+  "bot_mobile_number": "393501234567"
+}
+```
+
+Il bot leggerà automaticamente questo file al fallback (se le env vars non sono presenti).
+
+Poi riavvia il servizio:
+```bash
+sudo systemctl restart whatsapp_bot
 ```
 
 ### Abilita il Service
@@ -259,6 +395,34 @@ cp credentials.json ~/whatsapp_bot_data/
 
 ### Esegui il Container
 
+**Opzione A: Con variabili d'ambiente (Consigliato)**
+
+```bash
+docker run -d \
+  --name whatsapp_bot \
+  -v ~/whatsapp_bot_data:/data \
+  -e LOG_LEVEL="info" \
+  -e TELEGRAM_TOKEN="123456789:ABCDefGhijKlmnoPqrstUvwxyz" \
+  -e TELEGRAM_CHAT_ID="987654321" \
+  -e BOT_MOBILE_NUMBER="393501234567" \
+  whatsapp-garbage-bot
+```
+
+**Opzione B: Con file options.json (Fallback)**
+
+Crea `/home/your_user/whatsapp_bot_data/options.json`:
+
+```json
+{
+  "log_level": "info",
+  "telegram_token": "123456789:ABCDefGhijKlmnoPqrstUvwxyz",
+  "telegram_chat_id": "987654321",
+  "bot_mobile_number": "393501234567"
+}
+```
+
+Poi esegui:
+
 ```bash
 docker run -d \
   --name whatsapp_bot \
@@ -300,9 +464,11 @@ whatsapp-garbage-bot/
 **File Generati al Primo Avvio:**
 
 ```
-~/.garbage_bot/
-├── garbage_bot.sqlite        # Dati Neonize
-└── garbage_bot_config.sqlite # Configurazioni gruppi/sheet
+/data/
+├── garbage_bot.sqlite        # Dati Neonize (WhatsApp)
+├── garbage_bot_config.sqlite # Configurazioni gruppi/sheet
+├── credentials.json          # Credenziali Google
+└── options.json             # (Opzionale) Configurazioni bot
 ```
 
 ---
@@ -445,6 +611,34 @@ python3 garbage_bot.py
 sudo journalctl -u whatsapp_bot -n 100 --no-pager
 ```
 
+### Problemi di Configurazione
+
+**Problema: "Telegram non configurato" ma ho impostato telegram_token"**
+
+```bash
+# Verifica che il file /data/options.json sia presente e valido
+cat /data/options.json
+
+# Assicurati che il JSON sia formattato correttamente (senza virgole extra)
+# Se corretto, riavvia il bot:
+python3 garbage_bot.py
+
+# O se usi systemd:
+sudo systemctl restart whatsapp_bot
+```
+
+**Problema: log_level non cambia anche se impostato in options.json**
+
+- Il file viene letto al startup
+- Se lo modifichi dopo l'avvio, devi riavviare il bot
+- Verifica il contenuto: `cat /data/options.json`
+
+**Problema: "options.json not found" nei log**
+
+- È normale! Il file è opzionale
+- Se non lo crei, il bot usa i valori di default
+- Se vuoi personalizzare, crea il file come descritto nel [Step 4b](#-step-4b-configurazione-variabili-del-bot)
+
 ---
 
 ## 📚 Link Utili
@@ -468,5 +662,26 @@ sudo journalctl -u whatsapp_bot -n 100 --no-pager
 - [ ] Primo gruppo configurato con `/config`
 - [ ] Comandi funzionano (`/help`)
 - [ ] Service systemd configurato (opzionale)
+- [ ] File `/data/options.json` configurato (opzionale ma consigliato per Telegram)
 
 🎉 **Completato!** Il bot è pronto per funzionare 24/7.
+
+---
+
+## 📌 Configurazione Rapida di Riferimento
+
+Se vuoi configurare il bot rapidamente, ecco il template `/data/options.json`:
+
+```json
+{
+  "log_level": "info",
+  "telegram_token": "YOUR_BOT_TOKEN_HERE",
+  "telegram_chat_id": "YOUR_CHAT_ID_HERE",
+  "bot_mobile_number": "393501234567"
+}
+```
+
+Con questa configurazione riceverai:
+- ✅ QR code su Telegram per il primo login
+- ✅ Notifiche di errore istantanee
+- ✅ Log controllabili dal file di configurazione

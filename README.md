@@ -1,11 +1,13 @@
-# WhatsApp Garbage Bot - Home Assistant Add-ons Repository
+# 🚀 WhatsApp Garbage Bot - Home Assistant Add-on Repository
 
-Repository ufficiale di custom add-ons per [Home Assistant](https://www.home-assistant.io/).
+**Soluzione Completa per la gestione automatica dei turni spazzatura via WhatsApp + Google Sheets**
 
-## 📦 Add-ons Disponibili
+Repository ufficiale di custom add-ons per [Home Assistant](https://www.home-assistant.io/). Questo add-on è **ottimizzato e consigliato per Home Assistant OS**.
 
-### WhatsApp Garbage Bot
-Bot WhatsApp per gestione automatica turni spazzatura e calendario condominiale.
+## 📦 Add-on Disponibile
+
+### 🤖 WhatsApp Garbage Bot
+Bot WhatsApp intelligente per gestione automatica turni spazzatura e calendario condominiale con integrazione Google Sheets.
 
 **Caratteristiche:**
 - 📅 Gestione automatica calendario turni su Google Sheets
@@ -41,12 +43,25 @@ Bot WhatsApp per gestione automatica turni spazzatura e calendario condominiale.
 
 ## 🔧 Come Installare
 
-1. Home Assistant → Settings → Add-ons → **Create add-on repository**
-2. Inserisci l'URL di questo repository
-3. Cerca "WhatsApp Garbage Bot"
-4. Clicca **Install**
+### ⚡ Installazione Rapida (Consigliata)
 
-Per ulteriori informazioni, vedi la [documentazione completa](whatsapp_garbage_bot/INSTALL_HOMEASSISTANT.md).
+**Prerequisiti:**
+- Home Assistant OS in esecuzione
+- File `credentials.json` da Google Cloud Console
+
+**Passi:**
+
+[![Open your Home Assistant instance and show the add-on store.](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/)
+
+1. Clicca il badge sopra per aprire l'Add-on Store in H.A.
+2. Click su **Repositories** (in alto)
+3. Aggiungi il repository: `https://github.com/vladbragoi/garbage-bot`
+4. Cerca **WhatsApp Garbage Bot**
+5. Clicca **Install**
+6. Configura il file `credentials.json` (vedi [INSTALL_HOMEASSISTANT.md](garbage_bot/INSTALL_HOMEASSISTANT.md))
+7. Clicca **Start**
+
+**Per approfondimenti:** Consulta la [guida di installazione completa](garbage_bot/INSTALL_HOMEASSISTANT.md).
 
 ## ⚙️ Come Funziona
 
@@ -62,13 +77,30 @@ Per ulteriori informazioni, vedi la [documentazione completa](whatsapp_garbage_b
 - **Colonne Calendario**: Data, Bidone, Condomino, Telefono
 - **Formato Data**: DD/MM/YYYY
 
-## 📚 Documentazione
+## 📚 Documentazione Completa
 
-- [Installazione in Home Assistant](whatsapp_garbage_bot/INSTALL_HOMEASSISTANT.md)
-- [Installazione Locale (Linux/Raspberry Pi)](whatsapp_garbage_bot/INSTALL_LOCAL.md)
-- [Configurazione Google Sheets](whatsapp_garbage_bot/SETUP_CALENDARIO.md)
-- [Demo e Comandi](whatsapp_garbage_bot/README.md)
+| Documento | Descrizione |
+|-----------|-------------|
+| [📌 INSTALL_HOMEASSISTANT.md](garbage_bot/INSTALL_HOMEASSISTANT.md) | **[CONSIGLIATO]** Guida di installazione come add-on HA |
+| [📋 SETUP_CALENDARIO.md](garbage_bot/SETUP_CALENDARIO.md) | Configurazione e struttura Google Sheets |
+| [🤖 README.md](garbage_bot/README.md) | Descrizione features e comandi disponibili |
+| [🐧 INSTALL_LOCAL.md](garbage_bot/INSTALL_LOCAL.md) | Installazione alternativa per Linux/Raspberry Pi |
 
-## 📄 License
+⚠️ **Nota:** Se installi localmente (non su HA), il bot richiede Python 3.10+ e configurazione manuale dei servizi systemd.
 
-MIT License
+## �️ Architettura del Bot
+
+- **Runtime Principale:** Home Assistant Container (Docker)
+- **Backend:** Python 3.12 + asyncio
+- **Chat WhatsApp:** Neonize (Go Bridge)
+- **Database:** SQLite (persistente in `/data/`)
+- **API Google:** Google Sheets + Service Account Auth
+- **Notifiche:** Telegram (per alerting errori)
+
+## 📄 Licenza
+
+MIT License - Libero da usare e modificare nel tuo ambiente HA
+
+---
+
+**Domande? Apri un [issue](../../issues) nel repository! 🎉**

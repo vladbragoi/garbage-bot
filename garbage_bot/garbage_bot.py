@@ -7,7 +7,6 @@ import json
 import socket
 import os
 import requests
-import qrcode
 from io import BytesIO
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional, Tuple, Callable
@@ -39,7 +38,27 @@ class AppConfig:
     TELEGRAM_CHAT_ID: str = ""
 
     def load_and_apply(self):
-        """Legge options.json e FORZA l'applicazione del log_level corretto"""
+        """Legge da variabili d'ambiente (prioritario) e poi da options.json"""
+        # --- 1. LETTURA VARIABILI D'AMBIENTE (PRIORITARIO) ---
+        if os.getenv("TELEGRAM_TOKEN"):
+            self.TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+        if os.getenv("TELEGRAM_CHAT_ID"):
+            self.TELEGRAM_CHAT_ID = str(os.getenv("TELEGRAM_CHAT_ID"))
+        if os.getenv("BOT_MOBILE_NUMBER"):
+            self.MOBILE_NUMBER = str(os.getenv("BOT_MOBILE_NUMBER"))
+        
+        # Log level da env (con fallback a default)
+        log_level_env = os.getenv("LOG_LEVEL", "").upper()
+        if log_level_env == "DEBUG":
+            self.LOG_LEVEL = logging.DEBUG
+        elif log_level_env == "WARNING":
+            self.LOG_LEVEL = logging.WARNING
+        elif log_level_env == "ERROR":
+            self.LOG_LEVEL = logging.ERROR
+        elif log_level_env == "INFO":
+            self.LOG_LEVEL = logging.INFO
+        
+        # --- 2. LETTURA options.json (FALLBACK) ---
         options_file = "/data/options.json"
         
         if os.path.exists(options_file):
@@ -47,15 +66,15 @@ class AppConfig:
                 with open(options_file, "r") as f:
                     options = json.load(f)
                     
-                if "telegram_token" in options:
+                # Solo se non presente in env vars
+                if not os.getenv("TELEGRAM_TOKEN") and "telegram_token" in options:
                     self.TELEGRAM_TOKEN = options["telegram_token"]
-                if "telegram_chat_id" in options:
+                if not os.getenv("TELEGRAM_CHAT_ID") and "telegram_chat_id" in options:
                     self.TELEGRAM_CHAT_ID = str(options["telegram_chat_id"])
-                    
-                if "bot_mobile_number" in options:
+                if not os.getenv("BOT_MOBILE_NUMBER") and "bot_mobile_number" in options:
                     self.MOBILE_NUMBER = str(options["bot_mobile_number"])
 
-                if "log_level" in options:
+                if not log_level_env and "log_level" in options:
                     level_str = str(options["log_level"]).upper()
                     if level_str == "DEBUG":
                         self.LOG_LEVEL = logging.DEBUG
@@ -83,6 +102,44 @@ class AppConfig:
 
 config = AppConfig()
 config.load_and_apply()
+
+# --- VARIABILE GLOBALE PER IL LOOP ---
+_main_loop = None
+
+def run_in_background(func, *args, **kwargs):
+    """
+    Esegue una funzione bloccante (es. requests HTTP) in background.
+    Se l'event loop di asyncio è attivo, delega a run_in_executor in modo thread-safe.
+    Altrimenti usa un thread classico (per fallback).
+    """
+    global _main_loop
+    def _wrapper():
+        func(*args, **kwargs)
+        
+    if _main_loop and not _main_loop.is_closed():
+        _main_loop.call_soon_threadsafe(lambda: _main_loop.run_in_executor(None, _wrapper))
+    else:
+        import threading
+        threading.Thread(target=_wrapper, daemon=True).start()
+
+def send_telegram_error(message: str):
+    """Invia un messaggio di errore al bot Telegram configurato."""
+    if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
+        return
+        
+    def _worker():
+        try:
+            url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
+            data = {
+                'chat_id': str(config.TELEGRAM_CHAT_ID).strip(),
+                'text': f"🚨 *GarbageBot Error*\n\n`{message}`",
+                'parse_mode': 'Markdown'
+            }
+            requests.post(url, data=data, timeout=10)
+        except Exception as e:
+            logging.getLogger("TelegramError").error(f"Impossibile inviare errore Telegram: {e}")
+            
+    run_in_background(_worker)
 
 # --- REPOSITORY ---
 class ConfigRepository:
@@ -280,6 +337,7 @@ class CalendarService:
 
         except Exception as e:
             self.log.exception(f"Errore Lifecycle: {e}")
+            send_telegram_error(f"Errore Lifecycle:\n{e}")
             return "Errore"
 
     # --- MANUTENZIONE MANUALE (/genera) ---
@@ -302,6 +360,7 @@ class CalendarService:
             return True
         except Exception as e:
             self.log.error(f"Manual Fix Error: {e}")
+            send_telegram_error(f"Errore Manual Fix:\n{e}")
             return False
 
     # --- MANUTENZIONE MANUALE (/genera nuovi) ---
@@ -331,17 +390,23 @@ class CalendarService:
             return True
         except Exception as e:
             self.log.error(f"Manual Regenerate New Cycle Error: {e}")
+            send_telegram_error(f"Errore Manual Regenerate:\n{e}")
             return False
 
     async def create_next_cycle_sheet(self, sheet_url: str, target_sheet: str, start_date: date, start_idx: int = 0):
         loop = asyncio.get_running_loop()
-        condomini = await loop.run_in_executor(None, self._fetch_condomini_sync, sheet_url)
-        if not condomini: return
+        try:
+            condomini = await loop.run_in_executor(None, self._fetch_condomini_sync, sheet_url)
+            if not condomini: return
 
-        turni = self._calculate_shifts_cycle(condomini, start_date, start_idx)
-        
-        await loop.run_in_executor(None, self._overwrite_sheet_sync, sheet_url, target_sheet, turni)
-        await loop.run_in_executor(None, self._format_sheet_sync, sheet_url, target_sheet)
+            turni = self._calculate_shifts_cycle(condomini, start_date, start_idx)
+            
+            await loop.run_in_executor(None, self._overwrite_sheet_sync, sheet_url, target_sheet, turni)
+            await loop.run_in_executor(None, self._format_sheet_sync, sheet_url, target_sheet)
+        except Exception as e:
+            self.log.error(f"Error creating next cycle sheet: {e}")
+            send_telegram_error(f"Errore creazione prossimo ciclo ({target_sheet}):\n{e}")
+            raise
 
     def _calculate_shifts_cycle(self, condomini: List[tuple], start_date: date, start_idx: int) -> List[List[str]]:
         turni = []
@@ -382,14 +447,42 @@ class CalendarService:
 
         try:
             ws_cal = ss.worksheet("Calendario")
+            existing_titles = [w.title for w in ss.worksheets()]
+            
+            # Trova un nome univoco se esiste già
+            base_archive = archive_name
+            counter = 1
+            while archive_name in existing_titles:
+                archive_name = f"{base_archive}_{counter}"
+                counter += 1
+                
             ws_cal.update_title(archive_name)
-        except: pass
+        except Exception as e: 
+            logging.error(f"Errore durante la rinominazione del Calendario in {archive_name}: {e}")
+            send_telegram_error(f"Errore rotazione fogli (rinomina in {archive_name}):\n{e}")
 
         try:
             ws_new = ss.worksheet("NuovoCalendario")
+            
+            # Per sicurezza, controllo che Calendario non esista ancora (se la rinominazione è fallita)
+            existing_titles = [w.title for w in ss.worksheets()]
+            if "Calendario" in existing_titles:
+                try:
+                    ss.worksheet("Calendario").update_title(f"Calendario_err_{int(datetime.now().timestamp())}")
+                except Exception:
+                    pass
+                    
             ws_new.update_title("Calendario")
         except gspread.WorksheetNotFound:
-            ss.add_worksheet("Calendario", 1000, 4)
+            existing_titles = [w.title for w in ss.worksheets()]
+            if "Calendario" not in existing_titles:
+                ss.add_worksheet("Calendario", 1000, 4)
+            else:
+                try:
+                    ss.worksheet("Calendario").update_title(f"Calendario_err_{int(datetime.now().timestamp())}")
+                    ss.add_worksheet("Calendario", 1000, 4)
+                except Exception:
+                    pass
 
     def _truncate_future_sync(self, sheet_url: str) -> Optional[Dict]:
         gc = self.sheet._get_client()
@@ -570,6 +663,9 @@ class GarbageBot:
 
     async def start(self):
         """Ciclo principale nativo e circuit breaker."""
+        global _main_loop
+        _main_loop = asyncio.get_running_loop()
+        
         asyncio.create_task(self.scheduler_loop())
 
         while True:
@@ -680,7 +776,6 @@ class GarbageBot:
     
     def _fire_telegram_thread_sync(self, qr_text: str):
         """Thread puro di Python per gestire l'invio HTTP in modo isolato."""
-        import threading
         import time
         import requests
         import qrcode
@@ -737,7 +832,7 @@ class GarbageBot:
             except Exception as e:
                 self.log.error(f"❌ Errore critico nel thread Telegram: {e}")
 
-        threading.Thread(target=_worker, daemon=True).start()
+        run_in_background(_worker)
 
     async def on_connected(self, client: NewAClient, __: ConnectedEv):
         self.log.info("⚡ Bot Connesso!")
@@ -1013,9 +1108,11 @@ class GarbageBot:
                     await self._reply("❌ Errore durante la creazione del nuovo ciclo.", msg)
             except asyncio.TimeoutError:
                 self.log.error("❌ TIMEOUT Google Sheets (/genera nuovi)")
+                send_telegram_error("Timeout Google Sheets durante /genera nuovi")
                 await self._reply("❌ Errore di timeout durante la connessione a Google Sheets.", msg)
             except Exception as e:
                 self.log.exception(f"❌ ECCEZIONE /genera nuovi: {e}")
+                send_telegram_error(f"Eccezione /genera nuovi:\n{e}")
                 await self._reply(f"❌ Errore critico: {str(e)}", msg)
 
         else:
@@ -1047,9 +1144,11 @@ class GarbageBot:
                     await self._reply("❌ Errore durante il riavvio del ciclo corrente.", msg)
             except asyncio.TimeoutError:
                 self.log.error("❌ TIMEOUT Google Sheets (/genera)")
+                send_telegram_error("Timeout Google Sheets durante /genera")
                 await self._reply("❌ Errore di timeout durante la connessione a Google Sheets.", msg)
             except Exception as e:
                 self.log.exception(f"❌ ECCEZIONE /genera: {e}")
+                send_telegram_error(f"Eccezione /genera:\n{e}")
                 await self._reply(f"❌ Errore critico: {str(e)}", msg)
 
     async def cmd_help(self, msg: MessageEv, _):
