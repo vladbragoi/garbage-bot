@@ -1,4 +1,59 @@
 {
+  "name": "GarbageBot WhatsApp",
+  "version": "1.0.7",
+  "slug": "garbagebot_whatsapp",
+  "description": "Bot WhatsApp per gestione automatica turni spazzatura e calendario con integrazione Google Sheets",
+  "url": "https://github.com/vladbragoi/garbage-bot",
+  "documentation": "https://github.com/vladbragoi/garbage-bot/blob/main/garbage_bot/INSTALL_HOMEASSISTANT.md",
+  "arch": [
+    "aarch64",
+    "amd64",
+    "armv7"
+  ],
+  "startup": "application",
+  "boot": "auto",
+  "map": [
+    "config:ro",
+    "data:rw"
+  ],
+  "options": {
+    "log_level": "info",
+    "telegram_token": "",
+    "telegram_chat_id": "",
+    "bot_mobile_number": ""
+  },
+  "schema": {
+    "log_level": {
+      "name": "📊 Livello di Log",
+      "description": "Scegli il livello di dettaglio per i log (oppure usa variabile d'ambiente LOG_LEVEL)",
+      "required": false,
+      "type": "list",
+      "options": ["debug", "info", "warning", "error"],
+      "default": "info"
+    },
+    "telegram_token": {
+      "name": "🤖 Token Bot Telegram",
+      "description": "Token da @BotFather (oppure usa variabile d'ambiente TELEGRAM_TOKEN per maggiore sicurezza)",
+      "required": false,
+      "type": "string",
+      "default": ""
+    },
+    "telegram_chat_id": {
+      "name": "💬 Chat ID Telegram",
+      "description": "Il tuo ID chat Telegram (oppure usa variabile d'ambiente TELEGRAM_CHAT_ID)",
+      "required": false,
+      "type": "string",
+      "default": ""
+    },
+    "bot_mobile_number": {
+      "name": "📱 Numero WhatsApp del Bot",
+      "description": "Numero WhatsApp del bot (oppure usa variabile d'ambiente BOT_MOBILE_NUMBER)",
+      "required": false,
+      "type": "string",
+      "default": ""
+    }
+  }
+}{
   "name": "WhatsApp Garbage Bot",
   "version": "1.0.0",
   "slug": "whatsapp_garbage_bot",
