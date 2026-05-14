@@ -16,50 +16,14 @@ map:
   - config:ro  # Legge credentials.json dalla cartella /config di HA
   - data:rw    # Salva database e configurazioni in /data
 
-# Environment variables (prioritario rispetto a options.json)
-# Configurabili tramite variabili d'ambiente anziché options.json
-environment:
-  # Aggiungere qui le variabili d'ambiente necessarie
-
-# Default values - visible in Settings tab
-# Le variabili d'ambiente hanno priorità su questi valori!
 options:
   log_level: "info"
   telegram_token: ""
   telegram_chat_id: ""
   bot_mobile_number: ""
 
-# Configuration schema - defines UI fields in Home Assistant
 schema:
-  log_level:
-    name: "📊 Livello di Log"
-    description: "Scegli il livello di dettaglio per i log (oppure usa variabile d'ambiente LOG_LEVEL)"
-    required: false
-    type: "list"
-    options:
-      - debug
-      - info
-      - warning
-      - error
-    default: "info"
-    
-  telegram_token:
-    name: "🤖 Token Bot Telegram"
-    description: "Token da @BotFather (oppure usa variabile d'ambiente TELEGRAM_TOKEN per maggiore sicurezza)"
-    required: false
-    type: "string"
-    default: ""
-    
-  telegram_chat_id:
-    name: "💬 Chat ID Telegram"
-    description: "Il tuo ID chat Telegram (oppure usa variabile d'ambiente TELEGRAM_CHAT_ID)"
-    required: false
-    type: "string"
-    default: ""
-    
-  bot_mobile_number:
-    name: "📱 Numero WhatsApp del Bot"
-    description: "Numero WhatsApp del bot (oppure usa variabile d'ambiente BOT_MOBILE_NUMBER)"
-    required: false
-    type: "string"
-    default: ""
+  telegram_token: "str"
+  telegram_chat_id: "str"
+  log_level: "list(debug|info|warning|error)"
+  bot_mobile_number: "str"
