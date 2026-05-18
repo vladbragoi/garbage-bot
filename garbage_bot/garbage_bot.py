@@ -1356,18 +1356,17 @@ class GarbageBot:
             status, pdf = await self.calendar_service.manage_lifecycle(url)
             self.log.info(f"🔄 Stato {jid_str}: {status}")
             
-            # Se è stato creato un nuovo calendario e il bot ha un numero WhatsApp configurato, invia il PDF
-            if pdf and config.MOBILE_NUMBER:
+            # Se è stato creato un nuovo calendario, invia il PDF al numero WhatsApp del bot (se configurato)
+            if pdf and self.me:
                 try:
-                    self.log.info(f"📨 Invio PDF del nuovo calendario al numero del bot...")
-                    bot_jid = JID(User=config.MOBILE_NUMBER, Server="s.whatsapp.net", Device=0, Integrator=0, RawAgent=0)
+                    self.log.info(f"📨 Invio PDF del nuovo calendario al bot ({self.me.User})...")
                     caption = (
                         "📅 *Nuovo Ciclo Generato* 🆕\n\n"
                         "Il nuovo ciclo di turnazioni è stato generato automaticamente "
-                        "perché il ciclo attuale sta per scadere nei prossimi 30 giorni."
+                        "perché il ciclo attuale sta per scadere nei prossimi 30 giorni.\n\n"
                         "Ricordati di stamparlo e condividerlo con i condomini!"
                     )
-                    await self._send_private(bot_jid, caption, pdf, "NuovoCalendario.pdf")
+                    await self._send_private(self.me, caption, pdf, "NuovoCalendario.pdf")
                     self.log.info("✅ PDF inviato con successo al numero del bot.")
                 except Exception as e:
                     self.log.error(f"❌ Errore invio PDF al numero del bot: {e}")
