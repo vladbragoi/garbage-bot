@@ -1,5 +1,5 @@
 name: "GarbageBot WhatsApp"
-version: "1.0.7"
+version: "1.0.7-b1"
 slug: "garbagebot_whatsapp"
 description: "Bot WhatsApp per gestione automatica turni spazzatura e calendario con integrazione Google Sheets"
 url: "https://github.com/vladbragoi/garbage-bot"

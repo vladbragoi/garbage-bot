@@ -292,7 +292,12 @@ class CalendarService:
         return next_date
 
     # --- LIFECYCLE (Scheduler) ---
-    async def manage_lifecycle(self, sheet_url: str) -> str:
+    async def manage_lifecycle(self, sheet_url: str) -> Tuple[str, Optional[bytes]]:
+        """
+        Gestisce il ciclo di vita del calendario.
+        Ritorna: (messaggio_stato, pdf_bytes)
+        pdf_bytes contiene il PDF del nuovo calendario se deve essere inviato, None altrimenti.
+        """
         loop = asyncio.get_running_loop()
         try:
             records = await self.sheet.get_records(sheet_url)
@@ -301,13 +306,13 @@ class CalendarService:
                 self.log.info("⚠️ Calendario vuoto. Inizializzo.")
                 start_dt = self._get_first_monday_of_year(datetime.now().year)
                 await self.create_next_cycle_sheet(sheet_url, "Calendario", start_dt)
-                return "Inizializzato"
+                return "Inizializzato", None
 
             last_row = records[-1]
             try:
                 last_dt = datetime.strptime(str(last_row['Data']), config.DATE_FORMAT).date()
             except:
-                return "Errore Data ultima riga"
+                return "Errore Data ultima riga", None
 
             today = datetime.now().date()
             days_left = (last_dt - today).days
@@ -315,7 +320,7 @@ class CalendarService:
             if days_left < 0:
                 self.log.info("🔴 Ciclo scaduto. Ruoto fogli.")
                 await loop.run_in_executor(None, self._rotate_sheets_sync, sheet_url, records)
-                return "Ruotato (Archiviato -> Promosso)"
+                return "Ruotato (Archiviato -> Promosso)", None
 
             elif days_left <= 30:
                 exists = await loop.run_in_executor(None, self._check_sheet_exists_sync, sheet_url, "NuovoCalendario")
@@ -329,16 +334,21 @@ class CalendarService:
                     next_start = self._get_next_monday(last_dt)
                     
                     await self.create_next_cycle_sheet(sheet_url, "NuovoCalendario", next_start, next_idx)
-                    return "Creato NuovoCalendario"
+                    
+                    # Genera PDF del nuovo calendario da inviare al bot
+                    self.log.info("📄 Genero PDF del nuovo calendario...")
+                    pdf = await self.generate_pdf(sheet_url, worksheet_name="NuovoCalendario")
+                    
+                    return "Creato NuovoCalendario", pdf
                 else:
-                    return "NuovoCalendario già presente (Skip)"
+                    return "NuovoCalendario già presente (Skip)", None
             
-            return f"Attivo ({days_left}gg mancanti)"
+            return f"Attivo ({days_left}gg mancanti)", None
 
         except Exception as e:
             self.log.exception(f"Errore Lifecycle: {e}")
             send_telegram_error(f"Errore Lifecycle:\n{e}")
-            return "Errore"
+            return "Errore", None
 
     # --- MANUTENZIONE MANUALE (/genera) ---
     async def manual_fix_current_cycle(self, sheet_url: str) -> bool:
@@ -1343,8 +1353,25 @@ class GarbageBot:
             return
 
         for jid_str, url, _, _, _ in configs:
-            status = await self.calendar_service.manage_lifecycle(url)
+            status, pdf = await self.calendar_service.manage_lifecycle(url)
             self.log.info(f"🔄 Stato {jid_str}: {status}")
+            
+            # Se è stato creato un nuovo calendario e il bot ha un numero WhatsApp configurato, invia il PDF
+            if pdf and config.MOBILE_NUMBER:
+                try:
+                    self.log.info(f"📨 Invio PDF del nuovo calendario al numero del bot...")
+                    bot_jid = JID(User=config.MOBILE_NUMBER, Server="s.whatsapp.net", Device=0, Integrator=0, RawAgent=0)
+                    caption = (
+                        "📅 *Nuovo Ciclo Generato* 🆕\n\n"
+                        "Il nuovo ciclo di turnazioni è stato generato automaticamente "
+                        "perché il ciclo attuale sta per scadere nei prossimi 30 giorni."
+                        "Ricordati di stamparlo e condividerlo con i condomini!"
+                    )
+                    await self._send_private(bot_jid, caption, pdf, "NuovoCalendario.pdf")
+                    self.log.info("✅ PDF inviato con successo al numero del bot.")
+                except Exception as e:
+                    self.log.error(f"❌ Errore invio PDF al numero del bot: {e}")
+                    send_telegram_error(f"Errore invio PDF notifica ciclo:\n{e}")
 
 
 if __name__ == "__main__":
