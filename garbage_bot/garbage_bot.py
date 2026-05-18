@@ -874,7 +874,11 @@ class GarbageBot:
         clean_jid = JID(User=jid.User, Server=jid.Server, Device=0, Integrator=0, RawAgent=0)
         try:
             if doc:
-                msg = await self.client.build_document_message(doc, filename, text, "application/pdf")
+                # Se c'è testo, lo inviamo PRIMA del documento
+                if text:
+                    await self.client.send_message(clean_jid, text)
+                # Poi inviamo il documento
+                msg = await self.client.build_document_message(doc, filename, "", "application/pdf")
                 await self.client.send_message(clean_jid, message=msg)
             else:
                 await self.client.send_message(clean_jid, text)
