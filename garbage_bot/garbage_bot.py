@@ -1352,7 +1352,7 @@ class GarbageBot:
             self.log.info("⚠️ Nessun gruppo configurato.")
             return
 
-        for jid_str, url, _, _, _ in configs:
+        for jid_str, url, group_link, group_name, _ in configs:
             status, pdf = await self.calendar_service.manage_lifecycle(url)
             self.log.info(f"🔄 Stato {jid_str}: {status}")
             
@@ -1360,8 +1360,17 @@ class GarbageBot:
             if pdf and self.me:
                 try:
                     self.log.info(f"📨 Invio PDF del nuovo calendario al bot ({self.me.User})...")
+                    
+                    # Costruisci il messaggio con i dettagli del gruppo
+                    group_info = ""
+                    if group_name:
+                        group_info += f"📂 *Gruppo:* {group_name}\n"
+                    if group_link:
+                        group_info += f"🔗 *Link:* {group_link}\n"
+                    
                     caption = (
                         "📅 *Nuovo Ciclo Generato* 🆕\n\n"
+                        f"{group_info}\n"
                         "Il nuovo ciclo di turnazioni è stato generato automaticamente "
                         "perché il ciclo attuale sta per scadere nei prossimi 30 giorni.\n\n"
                         "Ricordati di stamparlo e condividerlo con i condomini!"
