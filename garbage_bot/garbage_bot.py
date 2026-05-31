@@ -219,13 +219,9 @@ class SheetService:
         return await loop.run_in_executor(None, self._get_records_sync, sheet_url, worksheet_name)
 
     def _get_records_sync(self, sheet_url: str, worksheet_name: str) -> List[Dict[str, Any]]:
-        try:
-            gc = self._get_client()
-            ws = gc.open_by_url(sheet_url).worksheet(worksheet_name)
-            return ws.get_all_records()
-        except Exception as e:
-            self.log.error(f"Errore download dati: {e}")
-            return []
+        gc = self._get_client()
+        ws = gc.open_by_url(sheet_url).worksheet(worksheet_name)
+        return ws.get_all_records()
 
     async def get_rules(self, sheet_url: str) -> str:
         loop = asyncio.get_running_loop()
@@ -245,6 +241,7 @@ class CalendarService:
     def __init__(self, sheet_service: SheetService):
         self.sheet = sheet_service
         self.log = logging.getLogger("CalendarService")
+        self._error_counts: Dict[str, int] = {}
 
     # --- PDF ---
     def _generate_html_template(self, dati: List[Dict], title: str = "Calendario Turni") -> str:
@@ -301,6 +298,7 @@ class CalendarService:
         loop = asyncio.get_running_loop()
         try:
             records = await self.sheet.get_records(sheet_url)
+            self._error_counts[sheet_url] = 0
             
             if not records:
                 self.log.info("⚠️ Calendario vuoto. Inizializzo.")
@@ -347,7 +345,11 @@ class CalendarService:
 
         except Exception as e:
             self.log.exception(f"Errore Lifecycle: {e}")
-            send_telegram_error(f"Errore Lifecycle:\n{e}")
+            self._error_counts[sheet_url] = self._error_counts.get(sheet_url, 0) + 1
+            if self._error_counts[sheet_url] >= 10:
+                send_telegram_error(f"Errore Lifecycle (ripetuto 10 volte):\n{e}")
+                # Reset così ricomincia a contare e non invia spam
+                self._error_counts[sheet_url] = 0
             return "Errore", None
 
     # --- MANUTENZIONE MANUALE (/genera) ---
@@ -1020,15 +1022,25 @@ class GarbageBot:
         url = await self._get_sheet_context(msg)
         if not url: return
         oggi = datetime.now().strftime(config.DATE_FORMAT)
-        records = await self.sheet_service.get_records(url)
-        found = next((r for r in records if str(r['Data']) == oggi), None)
-        if found: await self._reply(f"📅 *Oggi ({oggi})*\n👤 {found['Condomino']}\n🗑️ {found.get('Bidone','')}", msg)
-        else: await self._reply("ℹ️ Nessun turno oggi.", msg)
+        try:
+            records = await self.sheet_service.get_records(url)
+            found = next((r for r in records if str(r['Data']) == oggi), None)
+            if found: await self._reply(f"📅 *Oggi ({oggi})*\n👤 {found['Condomino']}\n🗑️ {found.get('Bidone','')}", msg)
+            else: await self._reply("ℹ️ Nessun turno oggi.", msg)
+        except Exception as e:
+            self.log.error(f"Errore cmd_oggi: {e}")
+            await self._reply("⚠️ Impossibile recuperare i dati da Google Sheets.", msg)
 
     async def cmd_prossimi(self, msg: MessageEv, _):
         url = await self._get_sheet_context(msg)
         if not url: return
-        records = await self.sheet_service.get_records(url)
+        try:
+            records = await self.sheet_service.get_records(url)
+        except Exception as e:
+            self.log.error(f"Errore cmd_prossimi: {e}")
+            await self._reply("⚠️ Impossibile recuperare i dati da Google Sheets.", msg)
+            return
+        
         oggi = datetime.now().date()
         futuri = []
         for r in records:
@@ -1339,7 +1351,12 @@ class GarbageBot:
     async def _send_reminders(self, date_str: str):
         configs = self.repo.get_all_configs()
         for jid_str, url, _, _, jid_blob in configs:
-            records = await self.sheet_service.get_records(url)
+            try:
+                records = await self.sheet_service.get_records(url)
+            except Exception as e:
+                self.log.error(f"Errore download dati per reminder ({jid_str}): {e}")
+                continue
+
             for r in records:
                 if str(r['Data']) == date_str:
                     try:
