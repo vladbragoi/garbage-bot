@@ -141,6 +141,30 @@ def send_telegram_error(message: str):
             
     run_in_background(_worker)
 
+def send_telegram_document(doc_bytes: bytes, filename: str, caption: str):
+    """Invia un documento (PDF) al bot Telegram configurato."""
+    if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
+        return
+        
+    def _worker():
+        try:
+            url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendDocument"
+            data = {
+                'chat_id': str(config.TELEGRAM_CHAT_ID).strip(),
+                'caption': caption,
+                'parse_mode': 'Markdown'
+            }
+            files = {'document': (filename, doc_bytes, 'application/pdf')}
+            resp = requests.post(url, data=data, files=files, timeout=30)
+            if resp.status_code == 200:
+                logging.getLogger("Telegram").info("✅ Documento inviato correttamente su Telegram.")
+            else:
+                logging.getLogger("Telegram").error(f"❌ Errore API Telegram (Documento): {resp.text}")
+        except Exception as e:
+            logging.getLogger("Telegram").error(f"Impossibile inviare documento Telegram: {e}")
+            
+    run_in_background(_worker)
+
 # --- REPOSITORY ---
 class ConfigRepository:
     def __init__(self, db_path: str):
@@ -1377,10 +1401,10 @@ class GarbageBot:
             status, pdf = await self.calendar_service.manage_lifecycle(url)
             self.log.info(f"🔄 Stato {jid_str}: {status}")
             
-            # Se è stato creato un nuovo calendario, invia il PDF al numero WhatsApp del bot (se configurato)
-            if pdf and self.me:
+            # Se è stato creato un nuovo calendario, invia il PDF su Telegram
+            if pdf:
                 try:
-                    self.log.info(f"📨 Invio PDF del nuovo calendario al bot ({self.me.User})...")
+                    self.log.info("📨 Invio PDF del nuovo calendario su Telegram...")
                     
                     # Costruisci il messaggio con i dettagli del gruppo
                     group_info = ""
@@ -1396,10 +1420,10 @@ class GarbageBot:
                         "perché il ciclo attuale sta per scadere nei prossimi 30 giorni.\n\n"
                         "Ricordati di stamparlo e condividerlo con i condomini!"
                     )
-                    await self._send_private(self.me, caption, pdf, "NuovoCalendario.pdf")
-                    self.log.info("✅ PDF inviato con successo al numero del bot.")
+                    send_telegram_document(pdf, "NuovoCalendario.pdf", caption)
+                    self.log.info("✅ Richiesta invio PDF su Telegram accodata.")
                 except Exception as e:
-                    self.log.error(f"❌ Errore invio PDF al numero del bot: {e}")
+                    self.log.error(f"❌ Errore invio PDF su Telegram: {e}")
                     send_telegram_error(f"Errore invio PDF notifica ciclo:\n{e}")
 
 
