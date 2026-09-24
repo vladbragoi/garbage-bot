@@ -37,6 +37,7 @@ Questa guida descrive l'installazione e la configurazione su **Home Assistant OS
 6. Condividi il Google Sheet:
    - Apri il file `credentials.json` con un editor di testo e copia l'indirizzo `client_email` (es. `garbage-bot-service@progetto.iam.gserviceaccount.com`).
    - Apri il tuo foglio Google Sheet del condominio, clicca su **Condividi**, incolla l'email del service account e assegna i permessi di **Editor**.
+   - Per la configurazione e la struttura richiesta del foglio, consulta [SETUP_CALENDARIO.md](SETUP_CALENDARIO.md).
 
 ---
 
@@ -54,7 +55,9 @@ In Home Assistant OS, i file dell'utente risiedono nella directory `/config/` (l
 
 ### Step 3: Installazione Add-on in Home Assistant
 
-1. Vai in Home Assistant su **Impostazioni > Componenti aggiuntivi > Raccolta di componenti aggiuntivi**.
+[![Open your Home Assistant instance and show the add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fvladbragoi%2Fgarbage-bot)
+
+1. Clicca sul pulsante sopra per aggiungere direttamente il repository alla tua istanza Home Assistant, oppure vai su **Impostazioni > Componenti aggiuntivi > Raccolta di componenti aggiuntivi**.
 2. Clicca sui tre puntini in alto a destra e seleziona **Repository**.
 3. Inserisci l'URL del repository:
    `https://github.com/vladbragoi/garbage-bot`
@@ -160,6 +163,15 @@ Salva le modifiche.
 1. Controlla la sezione **Registri** dell'add-on per verificare che la connessione sia attiva.
 2. Verifica che il gruppo sia stato attivato con il comando `/attiva <link_sheet>`.
 3. Assicurati che il bot non sia stato espulso dal gruppo o limitato nelle impostazioni di gruppo di WhatsApp.
+
+---
+
+## Guide di Riferimento
+
+- [Guida Configurazione Google Sheets](SETUP_CALENDARIO.md)
+- [Guida Esecuzione e Test Locale](INSTALL_LOCAL.md)
+- [README Add-on](README.md)
+- [README Principale](../README.md)
 
 ---
 

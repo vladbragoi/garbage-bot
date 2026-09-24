@@ -112,3 +112,12 @@ Il testo presente in questo foglio viene inviato nella chat quando un condomino 
 - Non modificare manualmente le righe generate nel foglio "Calendario".
 - Non rinominare le colonne A1:D1 nei fogli "Calendario" e "NuovoCalendario".
 - Non eliminare il foglio "Impostazioni".
+
+---
+
+## Guide di Riferimento
+
+- [Guida Installazione Home Assistant OS](INSTALL_HOMEASSISTANT.md)
+- [Guida Esecuzione Locale](INSTALL_LOCAL.md)
+- [README Add-on](README.md)
+- [README Principale](../README.md)

@@ -51,7 +51,7 @@ L'ambiente di esecuzione primario e consigliato e **Home Assistant OS** come add
 ## Quick Start su Home Assistant OS
 
 1. **Configura Google Sheets**:
-   Prepara il foglio con la struttura indicata in [SETUP_CALENDARIO.md](file:///home/jarvis/whatsapp_bot/garbage_bot/SETUP_CALENDARIO.md) e scarica `credentials.json` dalla Google Cloud Console.
+   Prepara il foglio con la struttura indicata in [SETUP_CALENDARIO.md](SETUP_CALENDARIO.md) e scarica `credentials.json` dalla Google Cloud Console.
 
 2. **Copia credentials.json**:
    Posiziona il file `credentials.json` nella cartella `/config/` principale di Home Assistant (usando File Editor, Studio Code Server o Samba). All'avvio, `run.sh` lo trasferira automaticamente in `/data/credentials.json`.
@@ -117,6 +117,15 @@ garbage_bot/
 ### PDF non generato
 - Assicurati che il foglio "Calendario" esista e contenga le 4 colonne: `Data`, `Bidone`, `Condomino`, `Telefono`.
 - Verifica che il formato delle date sia `DD/MM/YYYY`.
+
+---
+
+## Guide di Riferimento
+
+- [Guida Installazione Home Assistant OS](INSTALL_HOMEASSISTANT.md)
+- [Guida Configurazione Google Sheets](SETUP_CALENDARIO.md)
+- [Guida Esecuzione e Test Locale](INSTALL_LOCAL.md)
+- [README Principale](../README.md)
 
 ---
 

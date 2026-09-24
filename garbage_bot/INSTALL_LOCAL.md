@@ -2,7 +2,7 @@
 
 Questa guida illustra la configurazione del bot in ambiente locale o server Linux autonomo.
 
-Nota: Questa modalita e destinata a test, sviluppo o esecuzione standalone. Per l'uso standard e consigliato l'add-on ufficiale per **Home Assistant OS** (vedi [INSTALL_HOMEASSISTANT.md](file:///home/jarvis/whatsapp_bot/garbage_bot/INSTALL_HOMEASSISTANT.md)).
+Nota: Questa modalita e destinata a test, sviluppo o esecuzione standalone. Per l'uso standard e consigliato l'add-on ufficiale per **Home Assistant OS** (vedi [INSTALL_HOMEASSISTANT.md](INSTALL_HOMEASSISTANT.md)).
 
 ---
 
@@ -130,3 +130,12 @@ journalctl -u garbage_bot -f
 
 ### ModuleNotFoundError: No module named 'neonize'
 - Assicurarsi che il virtual environment sia attivo (`source venv/bin/activate`) e che le dipendenze siano state installate da `requirements.txt`.
+
+---
+
+## Guide di Riferimento
+
+- [Guida Installazione Home Assistant OS](INSTALL_HOMEASSISTANT.md)
+- [Guida Configurazione Google Sheets](SETUP_CALENDARIO.md)
+- [README Add-on](README.md)
+- [README Principale](../README.md)

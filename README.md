@@ -19,7 +19,7 @@ Bot WhatsApp per gestione automatica turni spazzatura e calendario condominiale 
 - Gestione automatica della rotazione e dei cicli di turnazione
 - Configurazione avanzata tramite interfaccia Home Assistant
 
-Guida di riferimento: [INSTALL_HOMEASSISTANT.md](file:///home/jarvis/whatsapp_bot/garbage_bot/INSTALL_HOMEASSISTANT.md)
+Guida di riferimento: [INSTALL_HOMEASSISTANT.md](garbage_bot/INSTALL_HOMEASSISTANT.md)
 
 ## Comandi Disponibili
 
@@ -44,13 +44,15 @@ Guida di riferimento: [INSTALL_HOMEASSISTANT.md](file:///home/jarvis/whatsapp_bo
 
 ## Installazione su Home Assistant OS
 
+[![Open your Home Assistant instance and show the add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fvladbragoi%2Fgarbage-bot)
+
 ### Prerequisiti
 - Home Assistant OS installato
 - File `credentials.json` ottenuto da Google Cloud Console (Service Account)
 
 ### Passaggi di Installazione
 
-1. Apri Home Assistant e accedi a **Impostazioni > Componenti aggiuntivi > Raccolta di componenti aggiuntivi**
+1. Clicca sul pulsante "Open your Home Assistant instance" in alto per aggiungere direttamente il repository, oppure accedi in Home Assistant a **Impostazioni > Componenti aggiuntivi > Raccolta di componenti aggiuntivi**
 2. Clicca sui tre puntini in alto a destra, seleziona **Repository** e aggiungi:
    `https://github.com/vladbragoi/garbage-bot`
 3. Cerca **GarbageBot WhatsApp** nella raccolta e clicca **Installa**
@@ -58,7 +60,7 @@ Guida di riferimento: [INSTALL_HOMEASSISTANT.md](file:///home/jarvis/whatsapp_bo
 5. Configura i parametri opzionali (token Telegram, Chat ID, numero del bot) nella scheda **Configurazione** dell'add-on
 6. Avvia l'add-on e consulta i log per scansionare il QR code di WhatsApp (o riceverlo direttamente su Telegram se configurato)
 
-Per la procedura dettagliata passo dopo passo: [INSTALL_HOMEASSISTANT.md](file:///home/jarvis/whatsapp_bot/garbage_bot/INSTALL_HOMEASSISTANT.md).
+Per la procedura dettagliata passo dopo passo: [INSTALL_HOMEASSISTANT.md](garbage_bot/INSTALL_HOMEASSISTANT.md).
 
 ## Struttura Google Sheets Richiesta
 
@@ -69,7 +71,7 @@ Per la procedura dettagliata passo dopo passo: [INSTALL_HOMEASSISTANT.md](file:/
 
 Formato data utilizzato: `DD/MM/YYYY`.
 
-Dettagli completi sullo schema del foglio: [SETUP_CALENDARIO.md](file:///home/jarvis/whatsapp_bot/garbage_bot/SETUP_CALENDARIO.md).
+Dettagli completi sullo schema del foglio: [SETUP_CALENDARIO.md](garbage_bot/SETUP_CALENDARIO.md).
 
 ## Risoluzione Problemi: Errore 405 (Client Outdated)
 
@@ -89,10 +91,10 @@ I server WhatsApp hanno revocato il supporto per la versione web del client segn
 
 | Documento | Descrizione |
 |---|---|
-| [INSTALL_HOMEASSISTANT.md](file:///home/jarvis/whatsapp_bot/garbage_bot/INSTALL_HOMEASSISTANT.md) | Guida principale di installazione e configurazione per Home Assistant OS |
-| [SETUP_CALENDARIO.md](file:///home/jarvis/whatsapp_bot/garbage_bot/SETUP_CALENDARIO.md) | Struttura e configurazione del foglio Google Sheets |
-| [garbage_bot/README.md](file:///home/jarvis/whatsapp_bot/garbage_bot/README.md) | Dettaglio tecnico dei componenti e comandi del bot |
-| [INSTALL_LOCAL.md](file:///home/jarvis/whatsapp_bot/garbage_bot/INSTALL_LOCAL.md) | Guida alternativa per test e sviluppo locale su Linux/Raspberry Pi |
+| [INSTALL_HOMEASSISTANT.md](garbage_bot/INSTALL_HOMEASSISTANT.md) | Guida principale di installazione e configurazione per Home Assistant OS |
+| [SETUP_CALENDARIO.md](garbage_bot/SETUP_CALENDARIO.md) | Struttura e configurazione del foglio Google Sheets |
+| [garbage_bot/README.md](garbage_bot/README.md) | Dettaglio tecnico dei componenti e comandi del bot |
+| [INSTALL_LOCAL.md](garbage_bot/INSTALL_LOCAL.md) | Guida alternativa per test e sviluppo locale su Linux/Raspberry Pi |
 
 ## Architettura
 
