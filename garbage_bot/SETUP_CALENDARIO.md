@@ -1,299 +1,114 @@
-# 📅 Configurazione Google Sheets - Calendario Turni
+# Configurazione Google Sheets - Calendario Turni
 
-Questo documento spiega come strutturare il tuo Google Sheet affinché il bot lo legga e gestisca correttamente il calendario dei turni.
+Questo documento illustra la struttura richiesta per il foglio Google Sheet affinche GarbageBot possa leggere, verificare e generare automaticamente i calendari delle turnazioni.
 
 ---
 
-## 📊 Struttura del Google Sheet
+## Struttura del Google Sheet
 
-Il tuo spreadsheet deve contenere **3 fogli**:
+Lo spreadsheet deve contenere i seguenti fogli di lavoro:
 
 ### 1. Foglio "Impostazioni"
 
-Contiene la **lista dei condomini** e i loro dati.
+Contiene l'anagrafica dei condomini e l'ordine stabilito per la rotazione dei turni.
 
-| Colonna | Contenuto | Esempio |
-|---------|-----------|---------|
-| A1 | Header (fisso) | "Nome" |
-| B1 | Header (fisso) | "Telefono" |
-| A2:A∞ | Nome condomino | Mario Rossi |
-| B2:B∞ | Telefono (opzionale) | +39 3XX XXXXXXX |
+| Cella | Contenuto | Esempio |
+|---|---|---|
+| A1 | Intestazione fissa | Nome |
+| B1 | Intestazione fissa | Telefono |
+| A2:A1000 | Nome condomino | Mario Rossi |
+| B2:B1000 | Telefono (opzionale) | +39 333 1234567 |
 
-**Importante:**
-- La lista inizia da **A2** e continua fino a **B1000** (range massimo)
-- L'ordine in questa colonna determina l'ordine dei turni nel calendario
-- Se modifichi l'ordine, il bot rileva il cambio e invia una notifica
+**Specifiche:**
+- I dati partono dalla riga 2 (range `A2:B1000`).
+- L'ordine delle righe stabilisce la sequenza di turnazione.
+- Se l'elenco dei condomini viene modificato, il bot calcola il nuovo hash e rigenera la pianificazione.
 
-**Esempio della pagina "Impostazioni":**
+**Esempio foglio "Impostazioni":**
 
-```
+```text
 Nome              | Telefono
------------------+------------------
+------------------+------------------
 Mario Rossi       | +39 333 1234567
 Paola Bianchi     | +39 334 2345678
 Franco Verdi      | +39 335 3456789
-Lucia Rossi       |
-...
+Lucia Neri        | 
 ```
 
 ---
 
 ### 2. Foglio "Calendario"
 
-Il bot **genera automaticamente** i turni in questo foglio.
+Il foglio in cui il bot scrive e mantiene i turni attivi.
 
-**Header (riga 1) - Fisso:**
+**Riga 1 (Intestazioni fisse):**
 
-| Colonna | Contenuto |
-|---------|-----------|
-| A1 | "Data" |
-| B1 | "Bidone" |
-| C1 | "Condomino" |
-| D1 | "Telefono" |
+| Colonna | Intestazione |
+|---|---|
+| A1 | Data |
+| B1 | Bidone |
+| C1 | Condomino |
+| D1 | Telefono |
 
-**Dati (righe 2+) - Generati dal bot:**
+**Righe 2+ (Turni generati automaticamente):**
 
-```
-Data      | Bidone   | Condomino    | Telefono
-----------|----------|--------------|------------------
-13/02/2026| plastica | Mario Rossi  | +39 333 1234567
-14/02/2026| carta    | Mario Rossi  |
-15/02/2026| plastica | Paola Bianchi| +39 334 2345678
-16/02/2026| carta    | Paola Bianchi|
-...
-```
-
-**Algoritmo di generazione:**
-
-Per ogni condomino:
-- **Lunedì**: Plastica
-- **Martedì**: Carta
-- Poi passa al condomino successivo
-
-Se hai 3 condomini:
-```
-Lunedì   1: Mario -> Plastica
-Martedì  1: Mario -> Carta
-Mercoledì 2: Paola -> Plastica
-Giovedì  2: Paola -> Carta
-Venerdì  3: Franco -> Plastica
-Sabato   3: Franco -> Carta
-Domenica 1: Mario -> Plastica  (ricomincia il ciclo)
+```text
+Data       | Bidone   | Condomino     | Telefono
+-----------+----------+---------------+------------------
+13/04/2026 | plastica | Mario Rossi   | +39 333 1234567
+14/04/2026 | carta    | Mario Rossi   | +39 333 1234567
+20/04/2026 | plastica | Paola Bianchi | +39 334 2345678
+21/04/2026 | carta    | Paola Bianchi | +39 334 2345678
 ```
 
-**Cicli:**
-- Ogni ciclo = (numero condomini × 2) righe
-- Il bot mantiene **max 2 cicli** contemporaneamente
-- Quando rimangono ≤30 giorni nel ciclo attuale, ne genera uno nuovo
+**Regola di turnazione predefinita:**
+- Ogni turno settimanale prevede:
+  - Lunedi: esposizione bidone Plastica
+  - Martedi: esposizione bidone Carta
+- Al termine della coppia di turni, la responsabilita passa al condomino successivo nella lista.
+- Un ciclo completo e composto da `numero condomini * 2` righe.
 
 ---
 
-### 3. Foglio "Regole" (Opzionale)
+### 3. Foglio "NuovoCalendario" (Generato Automaticamente)
 
-Contiene il regolamento del condominio. Mostrato con il comando `/regole`.
-
-Formato libero - può essere:
-- Una colonna di testo
-- Elenco puntato
-- Qualsiasi formato tu preferisca
-
-**Esempio:**
-
-```
-REGOLE CONDOMINIALI - GESTIONE SPAZZATURA
-
-✅ CORRETTO:
-• Cumuli ben contenuti in appositi bidoni
-• Plastica ben separata in sacchi
-• Differenziazione accurata
-
-❌ VIETATO:
-• Lasciare i cumuli per strada
-• Mescolare i bidoni
-• Utilizzare per rifiuti speciali
-```
-
-Quando qualcuno scrive `/regole`, il bot restituisce tutto il contenuto di questo foglio.
+Quando nel foglio "Calendario" restano 30 o meno giorni prima dell'ultimo turno pianificato, il bot:
+1. Crea automaticamente il foglio `NuovoCalendario`.
+2. Calcola la data del lunedi successivo all'ultimo turno programmato.
+3. Individua il prossimo condomino in sequenza.
+4. Genera il documento PDF del nuovo ciclo e lo invia sul canale Telegram configurato.
+5. Quando il ciclo corrente giunge a scadenza, il foglio precedente viene archiviato e `NuovoCalendario` viene promosso a `Calendario`.
 
 ---
 
-## 🔄 Flusso di Generazione Automatica
+### 4. Foglio "Regole" (Opzionale)
 
-```
-┌─────────────────────────────────┐
-│  Bot monitora ogni 5 minuti     │
-└────────────┬────────────────────┘
-             │
-             ├→ Calcola HASH del calendario
-             │
-             └→ Se HASH è diverso O rimangono ≤30 giorni
-                 │
-                 └→ Genera nuovo ciclo
-                    │
-                    ├→ Legge condomini da A2:B1000
-                    ├→ Crea turni (lunedì=plastica, martedì=carta)
-                    ├→ Scrive in "Calendario" mantenendo max 2 cicli
-                    ├→ Genera PDF formattato
-                    └→ Invia PDF in privata al bot
-```
-
-**Trigger automatici:**
-1. ✅ Modifica dei dati di calendario → PDF inviato
-2. ✅ Rimangono ≤30 giorni nel ciclo → Ciclo generato + PDF inviato
+Contiene il regolamento o le indicazioni per lo smaltimento dei rifiuti nel condominio.
+Il testo presente in questo foglio viene inviato nella chat quando un condomino usa il comando `/regole`.
 
 ---
 
-## 📝 Dettagli Tecnici
+## Comandi Correlati al Calendario
 
-### Hash SHA256
-
-Il bot usa un **hash SHA256** del contenuto del calendario per rilevare modifiche:
-
-```python
-hash = SHA256(calendario_data)
-```
-
-Se qualcuno **modifica l'ordine dei condomini** o cambia dati nella "Impostazioni", il bot lo rileva automaticamente entro 5 minuti.
-
-### Formattazione PDF
-
-Il PDF del calendario include:
-
-- **Intestazione verde** (#356854 - verde bosco)
-- **Righe alternate** (bianco / #f2f2f2)
-- **Tabella**: Data | Bidone | Condomino | Telefono
-- **Data di generazione** in calce
-
-### Timezone
-
-Il bot usa **timezone Europe/Rome**. Le date e i promemoria seguono questo fuso orario.
-
-Se hai necessità diverse, contatta l'admin.
+| Comando | Destinatario | Descrizione |
+|---|---|---|
+| `/oggi` | Gruppo | Indica chi e di turno nella data corrente e quale bidone esporre |
+| `/prossimi` | Gruppo | Elenca i successivi 10 turni programmati |
+| `/calendario` | Gruppo | Invia il file PDF del calendario corrente nel gruppo WhatsApp |
+| `/regole` | Gruppo | Mostra il testo presente nel foglio "Regole" |
+| `/genera` | Admin Gruppo | Tronca i turni futuri ed esegue il reset del ciclo dal lunedi successivo |
+| `/genera nuovi` | Admin Gruppo | Forza la creazione anticipata del foglio "NuovoCalendario" e genera il PDF |
 
 ---
 
-## ⚡ Comandi Disponibili per il Calendario
+## Linee Guida per la Manutenzione
 
-| Comando | Effetto | Dove |
-|---------|---------|------|
-| `/calendario` | **Utente**: Invia PDF attuale | Nel gruppo |
-| `/calendario` | **Admin**: Rigenera da capo | Privata del bot |
-| `/oggi` | Chi è di turno oggi | Nel gruppo |
-| `/prossimi` | Prossimi 10 turni | Nel gruppo |
+### Operazioni Corrette:
+- Mantenere l'ordine desiderato dei condomini nel foglio "Impostazioni".
+- Inserire i numeri di telefono con prefisso internazionale per consentire la menzione nel promemoria giornaliero.
+- Verificare periodicamente il PDF generato.
 
----
-
-## 🎯 Esempi Pratici
-
-### Esempio 1: Primo ciclo di 3 condomini
-
-**Impostazioni:**
-```
-Mario Rossi
-Paola Bianchi
-Franco Verdi
-```
-
-**Calendario Generato (Ciclo 1):**
-```
-Data       | Bidone    | Condomino     | Telefono
------------|-----------|---------------|------------------
-13/02/2026 | plastica  | Mario Rossi   | +39 333 XXXX
-14/02/2026 | carta     | Mario Rossi   |
-15/02/2026 | plastica  | Paola Bianchi | +39 334 XXXX
-16/02/2026 | carta     | Paola Bianchi |
-17/02/2026 | plastica  | Franco Verdi  |
-18/02/2026 | carta     | Franco Verdi  |
-19/02/2026 | plastica  | Mario Rossi   | (ricomincia)
-...
-```
-
-### Esempio 2: Cambio ordine condomini
-
-Se modifichi l'ordine in "Impostazioni" da:
-```
-Mario, Paola, Franco
-```
-
-a:
-```
-Franco, Mario, Paola
-```
-
-Il bot:
-1. **Entro 5 minuti**: Rileva il cambio via hash
-2. **Genera**: Un pdf con il calendario aggiornato
-3. **Invia**: Il PDF in privata
-
-### Esempio 3: Ciclo quasi terminato
-
-Se il primo ciclo finisce il 5 aprile e oggi è 10 marzo (<30 giorni):
-
-1. Bot rileva: "Rimangono 26 giorni"
-2. **Genera**: Nuovo ciclo partendo dall'8 aprile
-3. **Mantiene**: Ciclo vecchio + ciclo nuovo (2 cicli totali)
-4. **Elimina**: Cicli più vecchi (max 2)
-
----
-
-## 🔍 Debugging
-
-### Come verificare che il foglio sia configurato correttamente
-
-1. **Controlla i nomi dei fogli:**
-   ```
-   Impostazioni  ← Esatto, con accento
-   Calendario    ← Esatto
-   Regole        ← Opzionale
-   ```
-
-2. **Verifica la lista condomini:**
-   - Sono in A2:B1000?
-   - Nomi non vuoti?
-
-3. **Verifica il calendario:**
-   - Header è presente (A1:D1)?
-   - Il bot scrive i dati partendo da A2?
-
-### Se il bot non genera il calendario
-
-Controlla:
-
-1. **Credenziali Google**: Sono valide?
-2. **Permessi**: Il bot ha accesso in lettura/scrittura allo sheet?
-3. **Nomi fogli**: Sono esatti? (Case-sensitive per alcuni)
-4. **Range condomini**: A2:B1000 è corretto?
-
----
-
-## 💡 Best Practices
-
-✅ **Fai così:**
-
-- Mantieni l'ordine dei condomini ordine di rotazione che vuoi
-- Aggiungi i telefoni nella colonna B per riferimento
-- Controlla il PDF regolarmente per verificare che sia corretto
-- Usa `/regole` per comunicare norme condominiali
-
-❌ **Non fare così:**
-
-- Non modificare manualmente il foglio "Calendario" (il bot lo rigenera)
-- Non cambiare i nomi dei fogli (devono essere esatti)
-- Non eliminare il header in row 1
-- Non aggiungere colonne extra (il bot usa solo A:D)
-
----
-
-## 📞 Support
-
-Se hai problemi:
-
-1. Leggi [README.md](README.md) - Overview del progetto
-2. Seleziona il tuo ambiente:
-   - [INSTALL_LOCAL.md](INSTALL_LOCAL.md) - Setup locale/Raspberry Pi
-   - [INSTALL_HOMEASSISTANT.md](INSTALL_HOMEASSISTANT.md) - Setup Home Assistant
-3. Controlla i log per errori
-
----
-
-**Ora il tuo Google Sheet è pronto! 🎉**
+### Operazioni da Evitare:
+- Non modificare manualmente le righe generate nel foglio "Calendario".
+- Non rinominare le colonne A1:D1 nei fogli "Calendario" e "NuovoCalendario".
+- Non eliminare il foglio "Impostazioni".

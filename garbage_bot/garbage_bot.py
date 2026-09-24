@@ -741,7 +741,19 @@ class GarbageBot:
                 err_str = str(e).lower()
                 self.log.error(f"💥 Errore rilevato dal socket: {e}")
 
-                if any(x in err_str for x in ["405", "eof", "outdated", "reader", "readonly", "closed"]):
+                if any(x in err_str for x in ["405", "outdated"]):
+                    self.log.error("ERROR - Client outdated (405) connect failure (client version: 2.3000.1039406452). Richiesto aggiornamento della libreria.")
+                    send_telegram_error("Client outdated (405) connect failure. Richiesto aggiornamento della libreria.")
+                    try:
+                        await self.client.disconnect()
+                    except Exception:
+                        pass
+
+                    await asyncio.sleep(30)
+                    self._create_client()
+                    continue
+
+                if any(x in err_str for x in ["eof", "reader", "readonly", "closed"]):
                     self.log.warning("⚠️ Sessione interrotta per errore fatale. Ripristino in corso...")
                     try:
                         await self.client.disconnect()

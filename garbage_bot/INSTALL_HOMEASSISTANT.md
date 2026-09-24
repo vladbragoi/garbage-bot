@@ -1,339 +1,168 @@
-# 🤖 WhatsApp Garbage Bot - Home Assistant Add-on
+# WhatsApp Garbage Bot - Guida Installazione Home Assistant Add-on
 
-**Bot WhatsApp intelligente per gestione automatica turni spazzatura e calendario condominiale**
+Bot WhatsApp per la gestione automatica dei turni spazzatura e del calendario condominiale.
 
-Ottimizzato e sviluppato per **Home Assistant OS** come runtime principale. Gestisce automaticamente i turni, genera calendari PDF e mantiene il condominio organizzato via WhatsApp.
-
----
-
-## ⚡ Installazione Rapida
-
-### Aggiungi il Repository
-
-[![Open your Home Assistant instance and show the add-on store.](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/)
-
-1. Clicca il badge sopra
-2. Vai su **Repositories** → **Create Repository**
-3. Incolla: `https://github.com/vladbragoi/garbage-bot`
-4. Aggiungi il repository
-5. Torna alla Home e cerca **WhatsApp Garbage Bot**
-6. Clicca **Install**
+Questa guida descrive l'installazione e la configurazione su **Home Assistant OS**, che costituisce l'ambiente di runtime principale e supportato dell'applicazione.
 
 ---
 
-## 📋 Installazione Passo dopo Passo
+## Installazione Passo dopo Passo
 
 ### Prerequisiti
 
-- ✅ **Home Assistant OS** installato e in esecuzione (versione 2024.1+)
-- ✅ **Accesso SSH** o **File Editor** addon per caricare i file
-- ✅ **Google Cloud Console** account con credenziali JSON per Sheets API
-- ✅ **Numero WhatsApp** dedicato per il bot (o numero personale)
-
-### Step 1️⃣ - Ottenere credentials.json da Google Cloud
-
-**Tempo stimato: 5-10 minuti**
-
-1. Vai a [Google Cloud Console](https://console.cloud.google.com/)
-2. **Crea un nuovo progetto**:
-   - Clicca il menu a tendina in alto
-   - Clicca "NEW PROJECT"
-   - Dai un nome (es. `GarbageBot`)
-   - Crea il progetto
-
-3. **Abilita l'API Google Sheets**:
-   - Vai a **APIs & Services** → **Library**
-   - Cerca "Google Sheets API"
-   - Clicca su risultato
-   - Clicca **ENABLE**
-
-4. **Crea un Service Account**:
-   - Vai a **APIs & Services** → **Credentials**
-   - Clicca "Create Credentials" → **Service Account**
-   - Compila: Nome = `GarbageBot`
-   - Clicca **Create and Continue** (salta i ruoli)
-   - Finalizza con **Done**
-
-5. **Genera la chiave JSON**:
-   - Vai a **APIs & Services** → **Service Accounts**
-   - Clicca su `GarbageBot`
-   - Tab **Keys**
-   - **Create key** → **JSON**
-   - Scarica automaticamente `credentials.json`
-
-### Step 2️⃣ - Caricare credentials.json in Home Assistant
-
-**Prima di installare l'add-on:**
-
-1. Apri **Settings** → **System** → **File Editor** (se non l'hai, installa l'add-on)
-2. Clicca l'icona cartella in alto a sinistra
-3. Naviga a `/data/`
-4. Clicca il menu (tre punti) → **Upload file**
-5. Seleziona il file `credentials.json` che hai scaricato
-
-**Percorso finale:** `/data/credentials.json` ✅
-
-### Step 3️⃣ - Installare l'Add-on
-
-1. Home Assistant → **Settings** → **Add-ons** → **Add-on Store**
-2. Clicca su **Repositories** (in fondo)
-3. Clicca **Create Repository**
-4. Incolla: `https://github.com/vladbragoi/garbage-bot`
-5. Clicca **Create**
-6. Torna indietro, cerca **WhatsApp Garbage Bot**
-7. Clicca **Install**
-8. Una volta installato, clicca **Start**
-
-### Step 4️⃣ - Primo Avvio e Scansione QR
-
-1. Clicca **Logs** per vedere l'output
-2. Se tutto è OK vedrai:
-   ```
-   ⚙️ Log level impostato su: INFO
-   ✅ Sniffer QR agganciato
-   🔌 Tentativo di connessione a WhatsApp...
-   ```
-
-3. Apri **Telegram** e troverai il QR Code
-4. Apri **WhatsApp** sul tuo telefono → **Settings** → **Linked Devices** → **Link Device**
-5. Scansiona il QR che hai ricevuto da Telegram
-6. Autorizza il dispositivo
-
-7. Tornerai ai log e vedrai:
-   ```
-   ✅ Connessione completata!
-   👤 Bot User: +39XXXXXXXXX
-   ```
-
-### Step 5️⃣ - Configurare il Primo Gruppo
-
-1. Apri un gruppo WhatsApp
-2. Invia il comando:
-   ```
-   /config <link_gruppo> <link_sheet>
-   ```
-
-**Dove trovare i link:**
-
-- **Link Gruppo**: Nel gruppo, clicca sui tre puntini → **Condividi gruppo** → copia il link (`https://chat.whatsapp.com/...`)
-- **Link Sheet**: Apri il Google Sheet, clicca il pulsante **Share** in alto destra, copia l'URL
-
-**Esempio completo:**
-```
-/config https://chat.whatsapp.com/ABC123xyz https://docs.google.com/spreadsheets/d/1qwerty-ASDFGHJKL/edit?usp=sharing
-```
-
-3. Se tutto va bene:
-   ```
-   ✅ Bot attivato con successo per il gruppo: Condominio XYZ
-   ```
+- Home Assistant OS funzionante (versione 2024.1 o successiva).
+- Accesso alla cartella di configurazione di Home Assistant tramite File Editor, Studio Code Server o integrazione Samba.
+- Account Google Cloud Console con Service Account abilitato su Google Sheets API v4.
+- Numero WhatsApp dedicato per il bot (o numero secondario abilitato su WhatsApp Web).
 
 ---
 
-## 📊 Database e File
+### Step 1: Creazione Credenziali Google Cloud (credentials.json)
 
-Dopo il primo avvio, il bot creerà in `/data/`:
-
-| File | Descrizione |
-|------|-------------|
-| `garbage_bot.sqlite` | Dati persistenti WhatsApp (chat/config interna) |
-| `garbage_bot_config.sqlite` | Configurazioni gruppi e link ai Google Sheets |
-| `credentials.json` | Credenziali Google Cloud (segreto, non condividere!) |
-| `options.json` | (Auto-generato) Opzioni add-on |
-
-⚠️ **Attenzione:** Mantieni privata la cartella `/data/`. Se `credentials.json` viene compromesso, rigenera un nuovo Service Account.
-
-## 🛠️ Configurazione Opzionale in Home Assistant
-
-### Notifiche di Errore su Telegram
-
-Il bot può inviare automaticamente notifiche su Telegram se configurato:
-
-1. Crea un bot Telegram (parla con [@BotFather](https://t.me/botfather)):
-   - Invia `/start`
-   - Invia `/newbot`
-   - Dai un nome e uno username
-   - Copia il token (es. `123456:ABC-DEF123456789`)
-
-2. Ottieni il tuo Chat ID:
-   - Invia un messaggio a [@RawDataBot](https://t.me/rawdatabot)
-   - Copia il valore `"chat":{"id": XXXXX}`
-
-3. In Homes Assistant, vai all'add-on → **Settings** e compila:
-   - `telegram_token`: Il token di BotFather
-   - `telegram_chat_id`: Il tuo Chat ID
-
-4. Riavvia l'add-on
-
-Ora riceverai i QR code di login e notifiche di errore su Telegram!
+1. Accedi a [Google Cloud Console](https://console.cloud.google.com/).
+2. Crea un nuovo progetto (es. `GarbageBot`).
+3. Abilita l'API Google Sheets:
+   - Vai su **APIs & Services > Library**.
+   - Cerca **Google Sheets API** e clicca su **ENABLE**.
+4. Crea un Service Account:
+   - Vai su **APIs & Services > Credentials**.
+   - Clicca **Create Credentials > Service Account**.
+   - Assegna un nome (es. `garbage-bot-service`) e clicca **Create and Continue**.
+   - Salta i ruoli opzionali e termina con **Done**.
+5. Genera la chiave privata in formato JSON:
+   - Clicca sul Service Account appena creato.
+   - Apri la scheda **Keys** (Chiavi).
+   - Clicca **Add Key > Create new key > JSON**.
+   - Il browser scarichera un file JSON: rinominalo esattamente `credentials.json`.
+6. Condividi il Google Sheet:
+   - Apri il file `credentials.json` con un editor di testo e copia l'indirizzo `client_email` (es. `garbage-bot-service@progetto.iam.gserviceaccount.com`).
+   - Apri il tuo foglio Google Sheet del condominio, clicca su **Condividi**, incolla l'email del service account e assegna i permessi di **Editor**.
 
 ---
 
-## 📋 Comandi Disponibili
+### Step 2: Caricamento credentials.json in Home Assistant
 
-### Comandi Generali (Gruppo)
-- **`/oggi`** - Chi è di turno oggi
-- **`/prossimi`** - Prossimi 10 turni
-- **`/regole`** - Regole e regolamento
-- **`/calendario`** - Scarica PDF calendario
-- **`/help`** - Lista di tutti i comandi
+In Home Assistant OS, i file dell'utente risiedono nella directory `/config/` (la cartella di configurazione principale di Home Assistant, accessibile da File Editor o Samba).
 
-### Comandi Amministratore (Gruppo)
-- **`/attiva <link_sheet>`** - Attiva il bot nel gruppo
-- **`/disattiva`** - Disattiva il bot nel gruppo
-- **`/genera`** - Corregge il ciclo corrente
-- **`/genera nuovi`** - Crea nuovo ciclo
-
-### Comandi Superadmin (Chat Privata)
-- **`/config <link_gruppo> <link_sheet>`** - Configura gruppo
-- **`/config_check`** - Lista configurazioni
-- **`/config_reset <numero>`** - Rimuove configurazione
-- **`/db_reset`** - Ricrea database
+1. Apri **File Editor** o **Studio Code Server** in Home Assistant.
+2. Posizionati nella radice della cartella `/config/`.
+3. Carica il file `credentials.json`.
+   Percorso risultante: `/config/credentials.json`.
+4. All'avvio dell'add-on, lo script di avvio (`run.sh`) copiera automaticamente questo file nella partizione sicura e persistente `/data/credentials.json`, applicando i permessi restrittivi `600`.
 
 ---
 
-## 📁 Path Importanti in Home Assistant
+### Step 3: Installazione Add-on in Home Assistant
 
-| Path | Contenuto |
-|------|----------|
-| `/data/` | **Dati persistenti**: database SQLite, credentials.json, configurazioni |
-| `/data/garbage_bot.sqlite` | Database WhatsApp (Neonize) |
-| `/data/garbage_bot_config.sqlite` | Database configurazioni gruppi/sheet |
-| `/data/credentials.json` | Credenziali Google Cloud (SEGRETO!) |
-| `/app/` | Cartella applicazione (dentro container) |
-| `Home Assistant → Settings → Add-ons → Logs` | Output del bot in tempo reale |
-
----
-
-## 🔄 Upgrade e Manutenzione
-
-### Aggiornare l'Add-on
-
-1. Aspetta che sia disponibile un aggiornamento di GarbageBot
-2. Home Assistant → **Settings** → **Add-ons** → **WhatsApp Garbage Bot**
-3. Se il tasto è disponibile, clicca **Update**
-4. L'add-on si riavvierà automaticamente
-
-### Riavviare l'Add-on
-
-- Clicca il pulsante **Restart** nella pagina dell'add-on
-- Oppure clicca **Stop**, aspetta 5 secondi, poi **Start**
-
-### Reset Completo (Cancella tutti i dati)
-
-⚠️ **Attenzione:** Questa azione è irreversibile!
-
-```bash
-# Via SSH:
-rm /data/garbage_bot*.sqlite
-
-# Il bot ricrea automaticamente i database al prossimo avvio
-```
+1. Vai in Home Assistant su **Impostazioni > Componenti aggiuntivi > Raccolta di componenti aggiuntivi**.
+2. Clicca sui tre puntini in alto a destra e seleziona **Repository**.
+3. Inserisci l'URL del repository:
+   `https://github.com/vladbragoi/garbage-bot`
+4. Clicca **Aggiungi** e poi **Chiudi**.
+5. Ricarica la pagina e cerca **GarbageBot WhatsApp**.
+6. Clicca **Installa**.
 
 ---
 
-## 🐛 Troubleshooting
+### Step 4: Configurazione Opzioni Add-on
 
-### Problema: "Cannot connect to WhatsApp"
-**Soluzione:**
-- Verifica di aver scansionato il QR code correttamente
-- Controlla che il numero WhatsApp sia online e connesso
-- Se il QR non appare, riavvia l'add-on
+Nella scheda **Configurazione** dell'add-on in Home Assistant puoi personalizzare:
 
-### Problema: "credentials.json not found"
-**Soluzione:**
-1. Verifica che il file sia in `/data/credentials.json`
-2. Se manca, caricalo tramite **File Editor**:
-   - Settings → System → File Editor
-   - Naviga a `/data/`
-   - Upload `credentials.json`
+- `log_level`: Livello di dettaglio dei log (`debug`, `info`, `warning`, `error`). Default: `info`.
+- `telegram_token`: Token del bot Telegram fornito da @BotFather (opzionale ma consigliato per ricevere QR code e alert).
+- `telegram_chat_id`: ID numerico della chat Telegram fornito da @RawDataBot.
+- `bot_mobile_number`: Numero di telefono associato al bot WhatsApp (formato internazionale senza il prefisso +, es. `393501234567`).
 
-### Problema: "API Error 403: Invalid credentials"
-**Soluzione:**
-- Il Service Account non ha permessi sul Google Sheet
-- Apri lo Sheet, clicca **Share**
-- Condividi con l'email del Service Account (email nel `credentials.json`)
-- Dai permessi di **Editor**
-
-### Problema: "No module named 'neonize'"
-**Soluzione:**
-- L'image Docker non è stata compilata correttamente
-- Clicca **Rebuild** nella pagina dell'add-on
-- Oppure rimuovi e reinstalla l'add-on
-
-### Problema: Bot non risponde ai comandi
-**Soluzione:**
-1. Controlla i **Logs** dell'add-on
-2. Verificà che il bot sia connesso (cerca `⚡ Bot Connesso!` nei log)
-3. Assicurati che il gruppo sia configurato con `/config <link_sheet>`
-4. Prova con un semplice `/help`
-
-### Problema: "A sheet with the name 'Calendario' already exists"
-**Soluzione:**
-- Il bot ha rilevato un conflitto di nomi nei fogli
-- Questo è stato risolto negli ultimi aggiornamenti
-- Rinomina i fogli errati in "Cestino" e lascia che il bot ne crei uno nuovo
-- Se persiste, clicca **Rebuild** dell'add-on
+Salva le modifiche.
 
 ---
 
-## 📞 Support e Debugging
+### Step 5: Primo Avvio e Associazione WhatsApp
 
-### Abilitare Debug Logging
-
-1. Home Assistant → **Settings** → **Add-ons** → **WhatsApp Garbage Bot**
-2. Clicca **Settings**
-3. Imposta `log_level` a `debug`
-4. Riavvia l'add-on
-5. I log dettagliati appariranno nella sezione **Logs**
-
-### Raccogliere Informazioni per il Support
-
-Se hai problemi, raccogli queste info:
-1. **Output dei log** (ne ultimi 50 righe)
-2. **Home Assistant version** (Settings → About)
-3. **Add-on version** (nella pagina dell'add-on)
-4. **Descrizione del problema** (cosa succede esattamente?)
-
-Apri un issue nel [repository GitHub](https://github.com/vladbragoi/garbage-bot/issues)
+1. Avvia l'add-on dalla scheda **Info**.
+2. Apri la scheda **Registri** (Logs) dell'add-on:
+   - Se hai configurato Telegram, riceverai l'immagine del QR code direttamente nella tua chat Telegram.
+   - In alternativa, lo sniffer QR del bot stampa il payload nei registri di Home Assistant.
+3. Apri **WhatsApp** sullo smartphone:
+   - Vai su **Impostazioni > Dispositivi collegati > Collega un dispositivo**.
+   - Inquadra il QR code ricevuto.
+4. Una volta associato, nei registri comparira la conferma di connessione e il JID del bot.
 
 ---
 
-## 💡 Tips & Tricks
+### Step 6: Attivazione del Gruppo Condominiale
 
-### Backup dei Database
-```bash
-# Via SSH:
-cp -r /data/garbage_bot*.sqlite /backup/
-```
-
-### Monitorare il Bot in Real-Time
-- Apri Home Assistant
-- Settings → Add-ons → **WhatsApp Garbage Bot** → **Logs**
-- Attendi i log in tempo reale (non refreshare manualmente)
-
-### Invio Errori su Telegram
-Se configuri Telegram (vedi sopra), riceverai istantaneamente gli errori.
-
-Utile per:
-- Sessione scaduta WhatsApp
-- Problemi API Google Sheets
-- Errori di configurazione
+1. Aggiungi il numero WhatsApp del bot all'interno del gruppo WhatsApp del condominio.
+2. Un amministratore del gruppo deve inviare nel gruppo il comando:
+   `/attiva <link_del_google_sheet>`
+   Esempio:
+   `/attiva https://docs.google.com/spreadsheets/d/1aBcDeFgHiJkLmNoPqRsTuVwXyZ/edit`
+3. Il bot salvera la configurazione nel database persistente (`/data/garbage_bot_config.sqlite`) e confermera l'attivazione.
 
 ---
 
-## 📚 Documentazione Correlata
+## Elenco Comandi Disponibili
 
-- [SETUP_CALENDARIO.md](SETUP_CALENDARIO.md) - Come strutturare il Google Sheet
-- [README.md](README.md) - Feature e comandi disponibili
-- [INSTALL_LOCAL.md](INSTALL_LOCAL.md) - Installazione alternativa per Linux
+### Comandi Utente (all'interno del gruppo)
+- `/oggi`: Mostra chi e di turno oggi e quale bidone esporre.
+- `/prossimi`: Mostra i prossimi 10 turni in calendario.
+- `/regole`: Restituisce il contenuto del foglio "Regole".
+- `/calendario`: Genera e invia il documento PDF del calendario aggiornato nel gruppo.
+- `/info` (o `/help`, `/comandi`): Mostra la guida a tutti i comandi.
+
+### Comandi Amministratore (all'interno del gruppo)
+- `/attiva <link_sheet>`: Collega il foglio Google al gruppo corrente.
+- `/disattiva`: Rimuove il gruppo dal database del bot.
+- `/genera`: Resetta i turni futuri a partire dal lunedi successivo ripartendo dal primo condomino.
+- `/genera nuovi`: Genera una nuova rotazione (NuovoCalendario) partendo dalla data di fine del ciclo attuale.
+
+### Comandi Superadmin (in chat privata col bot)
+- `/config <link_gruppo> <link_sheet>`: Collega un gruppo da remoto tramite link di invito.
+- `/config_check`: Mostra tutte le configurazioni attive salvate.
+- `/config_reset <numero>`: Rimuove la configurazione con l'indice specificato.
+- `/db_reset`: Ricrea le tabelle del database di configurazione.
 
 ---
 
-## 📄 Licenza
+## Architettura File e Mappature Cartelle in Home Assistant
 
-MIT License - Libero da usare nel tuo ambiente Home Assistant
+| Percorso | Tipo di Mount | Descrizione |
+|---|---|---|
+| `/config` | Host (sola lettura `:ro`) | Cartella condivisa di Home Assistant. Il bot legge `credentials.json` da qui. |
+| `/data` | Host (lettura/scrittura `:rw`) | Storage persistente isolato dell'add-on. Contiene i database e le credenziali protette. |
+| `/data/garbage_bot.sqlite` | File SQLite | Sessione e chiavi crittografiche WhatsApp gestite da Neonize/whatsmeow. |
+| `/data/garbage_bot_config.sqlite` | File SQLite | Mappatura gruppi, URL Google Sheets e metadati. |
+| `/data/credentials.json` | File JSON | Copia sicura della chiave di servizio Google (permessi `600`). |
+| `/data/options.json` | File JSON | Configurazioni generate automaticamente da Home Assistant UI. |
 
-## 🤝 Support
+---
 
-Domande o problemi? Apri un [issue](https://github.com/vladbragoi/garbage-bot/issues) nel repository! 🎉
+## Risoluzione Problemi (Troubleshooting)
+
+### Errore 405: "Client outdated (405) connect failure"
+- **Messaggio di errore:**
+  `ERROR - Client outdated (405) connect failure (client version: 2.3000.1039406452)`
+- **Causa:** WhatsApp dismette periodicamente il supporto per le versioni obsolete del protocollo WhatsApp Web. Se la versione inviata dalla libreria sottostante e deprecata dai server WhatsApp, la connessione fallisce con errore 405.
+- **Risoluzione:**
+  1. L'errore richiede un aggiornamento dell'add-on di Home Assistant (o della libreria di connessione).
+  2. Aggiorna l'add-on di Home Assistant all'ultima versione disponibile per ottenere il client compatibile con i requisiti attuali dei server WhatsApp.
+  3. Il database di sessione (`/data/garbage_bot.sqlite`) viene preservato, garantendo la riconnessione automatica senza dover scansionare nuovamente il codice QR.
+
+### Errore: "credentials.json non trovato"
+- Verifica di aver caricato il file in `/config/credentials.json` (la directory principale di Home Assistant accessibile da File Editor o Samba).
+- Non caricare il file in sottocartelle; il nome deve essere rigorosamente `credentials.json`.
+- Riavvia l'add-on dopo il caricamento.
+
+### Errore: "API Error 403 / Permessi Google Sheets"
+- Assicurati di aver aperto il Google Sheet e condiviso il file con l'indirizzo email presente nel campo `client_email` del file `credentials.json`, concedendo il ruolo di **Editor**.
+
+### Il bot non risponde nel gruppo
+1. Controlla la sezione **Registri** dell'add-on per verificare che la connessione sia attiva.
+2. Verifica che il gruppo sia stato attivato con il comando `/attiva <link_sheet>`.
+3. Assicurati che il bot non sia stato espulso dal gruppo o limitato nelle impostazioni di gruppo di WhatsApp.
+
+---
+
+## Licenza
+
+MIT License.

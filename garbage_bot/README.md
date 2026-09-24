@@ -1,236 +1,125 @@
-# 🤖 WhatsApp Garbage Bot
+# WhatsApp Garbage Bot
 
-**Bot WhatsApp intelligente per la gestione automatica di turni spazzatura e calendario con integrazione Google Sheets**
+Bot WhatsApp per la gestione automatica di turni spazzatura e calendario con integrazione Google Sheets.
 
-Monitora 24/7, genera calendari automaticamente, e mantiene il tuo condominio organizzato via WhatsApp.
+Monitora le scadenze dei turni, genera cicli e PDF automaticamente e gestisce i promemoria del condominio via WhatsApp e Telegram.
 
-> ⭐ **Consigliato per Home Assistant OS**. Supporta anche installazione locale su Linux/Raspberry Pi.
-
----
-
-## ✨ Caratteristiche Principali
-
-- 🏠 **Ottimizzato per Home Assistant**: Funziona come add-on nativo con container Docker
-- 📅 **Calendario intelligente**: Monitoraggio continuo con generazione automatica di cicli
-- 📱 **Comandi WhatsApp**: Interroga il calendario dal gruppo in tempo reale
-- 🔔 **Promemoria giornalieri**: Notifica automatica chi è di turno ogni mattina
-- 📊 **Google Sheets integrato**: Gestione dati su foglio condiviso
-- 🚀 **Multi-ambiente**: Supporto per Home Assistant OS, Raspberry Pi e Linux
-- 🔐 **Sicuro**: Autenticazione Google con credenziali dedicate
-- 📨 **Notifiche Telegram**: Allerta istantanea per errori e QR code
+L'ambiente di esecuzione primario e consigliato e **Home Assistant OS** come add-on nativo. E supportata anche una modalita alternativa per test e sviluppo locale su Linux/Raspberry Pi.
 
 ---
 
-## 📋 Comandi Disponibili
+## Caratteristiche Principali
 
-### Per Tutti
-```
-/oggi              Chi è di turno oggi
+- **Ottimizzato per Home Assistant**: Funziona come add-on nativo con container Docker basato su Debian (Python 3.12).
+- **Calendario intelligente**: Monitoraggio orario con generazione automatica del nuovo ciclo a 30 giorni dalla scadenza.
+- **Comandi WhatsApp**: Consultazione rapida dei turni correnti e futuri all'interno dei gruppi.
+- **Promemoria giornalieri**: Notifica ogni mattina alle 09:00 per il condomino di turno.
+- **Google Sheets integrato**: Sincronizzazione con Google Sheets API v4 tramite Service Account.
+- **Notifiche Telegram**: Invio del QR code di associazione al primo avvio, ricezione di alert per errori critici e consegna del PDF del nuovo ciclo generato.
+
+---
+
+## Comandi Disponibili
+
+### Comandi per Tutti (Gruppo)
+```text
+/oggi              Chi e di turno oggi
 /prossimi          Prossimi 10 turni in programma
-/regole            Regole e buone norme del condominio
-/calendario        Invia PDF calendario (utenti) / Rigeneran completo (admin)
-/help              Elenco completo comandi
+/regole            Regolamento rifiuti condominiale
+/calendario        Invia il PDF del calendario turni attuale
+/help (o /info)    Elenco completo dei comandi
 ```
 
-### Solo Admin
+### Comandi Amministratore (Gruppo)
+```text
+/attiva <link_sheet>  Collega e attiva il bot nel gruppo con il foglio Google
+/disattiva            Disattiva il bot e rimuove la configurazione del gruppo
+/genera               Corregge il ciclo corrente troncando i turni futuri e riavviando da zero
+/genera nuovi         Crea un nuovo ciclo (NuovoCalendario) partendo dalla fine del ciclo attuale
 ```
-/config            Collega un nuovo gruppo a Sheet
-/config_check      Mostra configurazioni attuali
-/config_reset      Rimuovi configurazione
-/db_reset          Ricrea i database
+
+### Comandi Superadmin (Chat Privata col Bot)
+```text
+/config <link_grp> <link_sheet>  Collega un gruppo da remoto tramite link di invito
+/config_check                    Mostra le configurazioni attive salvate
+/config_reset <numero>           Rimuove una configurazione specifica
+/db_reset                        Ricrea le tabelle del database di configurazione
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quick Start su Home Assistant OS
 
-### 1️⃣ Scegli il tuo ambiente
+1. **Configura Google Sheets**:
+   Prepara il foglio con la struttura indicata in [SETUP_CALENDARIO.md](file:///home/jarvis/whatsapp_bot/garbage_bot/SETUP_CALENDARIO.md) e scarica `credentials.json` dalla Google Cloud Console.
 
-**🏠 [Home Assistant OS](INSTALL_HOMEASSISTANT.md) (Consigliato)**
-- Installazione come add-on nativo
-- Zero configurazione dei servizi
-- Gestione interfaccia web integrata
-- Aggiornamenti automatici
+2. **Copia credentials.json**:
+   Posiziona il file `credentials.json` nella cartella `/config/` principale di Home Assistant (usando File Editor, Studio Code Server o Samba). All'avvio, `run.sh` lo trasferira automaticamente in `/data/credentials.json`.
 
-**🐧 [Linux / Raspberry Pi](INSTALL_LOCAL.md)**
-- Installazione manuale con Python
-- Perfetto se hai già un server Linux
-- Richiede configurazione systemd
+3. **Installa l'Add-on**:
+   Aggiungi il repository `https://github.com/vladbragoi/garbage-bot` nella Raccolta Add-on di Home Assistant e installa **GarbageBot WhatsApp**.
 
-_Se non sai quale scegliere, usa **Home Assistant OS**!_
+4. **Avvia e Associa WhatsApp**:
+   Avvia l'add-on. Riceverai il QR code nei log dell'add-on oppure su Telegram (se configurato). Inquadra il QR da WhatsApp (Dispositivi collegati).
 
-### 2️⃣ Configura Google Sheets
-
-1. Prepara un Google Sheet con la struttura indicata in [SETUP_CALENDARIO.md](SETUP_CALENDARIO.md)
-2. Ottieni le credenziali Google (Service Account JSON)
-3. Carica il file nel bot (vedi guida installazione)
-
-### 3️⃣ Configura il Primo Gruppo
-
-Invia il comando nel gruppo WhatsApp:
-```
-/config https://chat.whatsapp.com/xxxxx https://docs.google.com/spreadsheets/d/xxxxx
-```
-
-✅ Fatto! Il bot è pronto a gestire i turni!
+5. **Attiva il Gruppo**:
+   Invia nel gruppo del condominio il comando:
+   `/attiva https://docs.google.com/spreadsheets/d/TUO_FOGLIO_ID/edit`
 
 ---
 
-## 📚 Documentazione Completa
+## Architettura e Storage in Home Assistant
 
-| Documento | Descrizione |
-|-----------|-------------|
-| **[📌 INSTALL_HOMEASSISTANT.md](INSTALL_HOMEASSISTANT.md)** | **[CONSIGLIATO]** Guida di installazione come add-on HA - Segui questa se non sai da dove iniziare |
-| [📋 SETUP_CALENDARIO.md](SETUP_CALENDARIO.md) | Struttura Google Sheets + configurazione calendario turni |
-| [🐧 INSTALL_LOCAL.md](INSTALL_LOCAL.md) | Installazione alternativa per Linux/Raspberry Pi |
-| [⬅️ README principale](../README.md) | Repository e overview generale del progetto |
-
----
-
-## 🎯 Come Funziona
-
-```
-┌─────────────────────────────────────┐
-│  Google Sheets (Impostazioni)       │
-│  Lista condomini (A2:B1000)         │
-└────────────┬────────────────────────┘
-             │
-             ↓
-┌─────────────────────────────────────┐
-│  WhatsApp Bot (Monitora)            │
-│  • Ogni 5 min: controlla modifiche  │
-│  • Ogni mattina: promemoria turni   │
-│  • Auto-genera: cicli quando serve  │
-└────────────┬────────────────────────┘
-             │
-             ↓
-┌─────────────────────────────────────┐
-│  Google Sheets (Calendario)         │
-│  Turni generati automaticamente     │
-└────────────┬────────────────────────┘
-             │
-             ↓
-┌─────────────────────────────────────┐
-│  WhatsApp Messages                  │
-│  /oggi, /prossimi, /calendario      │
-└─────────────────────────────────────┘
-```
-
-### Monitoraggio Automatico
-
-Il bot controlla il calendario **ogni 5 minuti** e:
-
-1. **Se i dati cambiano** (es: modifica ordine condomini)
-   - Genera PDF e invia in privata al numero del bot
-
-2. **Se rimangono ≤30 giorni** nel ciclo attuale
-   - Genera automaticamente il nuovo ciclo
-   - Invia PDF in privata
-
-3. **Ogni mattina alle 09:00**
-   - Invia promemoria al gruppo (chi è di turno oggi)
+Home Assistant Supervisor mappa due directory all'interno del container Docker:
+- `/config`: Directory di configurazione di Home Assistant (montata in sola lettura `:ro`). Usata per la consegna sicura del file `credentials.json`.
+- `/data`: Directory persistente isolata per l'add-on (montata in lettura e scrittura `:rw`). Contiene:
+  - `credentials.json`: Chiave di accesso Google Service Account (permessi `600`).
+  - `garbage_bot.sqlite`: Sessione WhatsApp gestita da Neonize/whatsmeow.
+  - `garbage_bot_config.sqlite`: Mappatura JID dei gruppi, nomi e URL Google Sheets.
+  - `options.json`: Opzioni salvate dall'interfaccia utente di Home Assistant.
 
 ---
 
-## 🔧 Requisiti
+## Struttura del Progetto
 
-### Necessario
-- **Python 3.10+** (per installazione locale)
-- **Google Account** con accesso a Google Cloud
-- **Numero WhatsApp** per il bot
-- **Google Sheet** per gestire i dati
-
-### Opzionale
-- **Raspberry Pi** o simile (per esecuzione continua)
-- **Home Assistant** (per integrazione domotica)
-
----
-
-## 📁 Struttura del Progetto
-
-```
-whatsapp_garbage_bot/
-├── garbage_bot.py              # Bot principale
+```text
+garbage_bot/
+├── garbage_bot.py              # Applicazione principale Python
 ├── requirements.txt            # Dipendenze Python
-├── config.json                 # Metadata Home Assistant
-├── Dockerfile                  # Container Docker
-├── run.sh                       # Script di avvio
-│
-├── 📖 Documentazione
-├── README.md                   # Questo file
-├── SETUP_CALENDARIO.md         # Configurazione Sheets
-├── INSTALL_LOCAL.md            # Setup locale
-├── INSTALL_HOMEASSISTANT.md    # Setup Home Assistant
-│
-└── 📋 Reference
-    ├── calendar.gs             # Google Apps Script originale
-    ├── garbage_bot.service     # Unit file systemd
-    └── setup.sh                # Script setup iniziale
+├── config.yaml                 # Metadata add-on Home Assistant
+├── Dockerfile                  # Immagine Docker Debian-based
+├── run.sh                      # Entrypoint container con gestione credenziali
+├── translations/               # Traduzioni interfaccia opzioni HA (it, en)
+│   ├── it.yaml
+│   └── en.yaml
+├── README.md                   # Documentazione add-on
+├── INSTALL_HOMEASSISTANT.md    # Guida installazione Home Assistant OS
+├── SETUP_CALENDARIO.md         # Istruzioni Google Sheets
+├── INSTALL_LOCAL.md            # Guida esecuzione locale / development
+├── garbage_bot.service         # Template systemd per esecuzione locale
+└── setup.sh                    # Script di provisioning locale
 ```
 
 ---
 
-## 💡 Scenari di Utilizzo
+## Risoluzione Errori Comuni
 
-### Scenario 1: Condominio piccolo (2-3 persone)
-```
-Lunedì:  Mario -> Plastica
-Martedì: Mario -> Carta
-Mercoledì: Paola -> Plastica
-...
-```
+### Errore: "Client outdated (405) connect failure"
+- **Sintomo:** Il bot fallisce la connessione e nei log compare:
+  `ERROR - Client outdated (405) connect failure (client version: 2.3000.1039406452)`
+- **Causa:** WhatsApp richiede periodicamente versioni aggiornate del protocollo web. Quando la versione riportata dalla libreria sottostante e deprecata dai server WhatsApp, la connessione viene respinta con errore 405.
+- **Soluzione:** L'errore richiede un aggiornamento della libreria di connessione o dell'add-on di Home Assistant. In Home Assistant OS, aggiornare l'add-on all'ultima versione. In ambiente locale, eseguire `pip install --upgrade neonize`. Il bot preserva il database di sessione, evitando la necessita di effettuare nuovamente la scansione QR.
 
-### Scenario 2: Condominio medio-grande (10+ persone)
-```
-Lunedì:  Condomino 1 -> Plastica
-Martedì: Condomino 1 -> Carta
-Mercoledì: Condomino 2 -> Plastica
-...
-```
+### Errore: "credentials.json non trovato"
+- Copia il file scaricato da Google Cloud Console dentro la cartella `/config/` di Home Assistant denominandolo esattamente `credentials.json`.
+- Riavvia l'add-on.
 
-Il bot **gestisce automaticamente** per quanti condomini vuoi.
+### PDF non generato
+- Assicurati che il foglio "Calendario" esista e contenga le 4 colonne: `Data`, `Bidone`, `Condomino`, `Telefono`.
+- Verifica che il formato delle date sia `DD/MM/YYYY`.
 
 ---
 
-## 🐛 Troubleshooting Rapido
+## Licenza
 
-### "Bot non risponde"
-```bash
-# Controlla i log
-sudo journalctl -u whatsapp_bot -f  # Linux
-# oppure consulta i log in Home Assistant
-```
-
-### "PDF non generato"
-- Verifica che la struttura Google Sheets sia corretta
-- Controlla che il foglio si chiami esattamente "Calendario"
-
-### "Credenziali non valide"
-- Scarica di nuovo `credentials.json` da Google Cloud
-- Verifica che il Service Account abbia accesso allo Sheet
-
----
-
-## 🤝 Contributi e Issues
-
-- Segnala bug: [Issues](../../issues)
-- Discussioni e feature request: [Discussions](../../discussions)
-
----
-
-## 📄 Licenza
-
-MIT License - Libero da usare e modificare
-
----
-
-## 👤 Supporto
-
-Per domande o problemi:
-1. Leggi la [documentazione](SETUP_CALENDARIO.md)
-2. Controlla i [log di errore](#troubleshooting-rapido)
-3. Apri un [issue](../../issues)
-
----
-
-**Lasciato un ⭐ se ti è stato utile!**
+MIT License.
