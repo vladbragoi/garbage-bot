@@ -15,6 +15,7 @@ from garbage_bot import (
     ConfigRepository,
     CalendarService,
     SheetService,
+    GarbageBot,
 )
 from neonize.proto.Neonize_pb2 import JID
 
@@ -113,6 +114,25 @@ class TestCalendarService(unittest.TestCase):
         self.assertEqual(self.calendar._find_next_condomino_index("Mario", condomini), 1)
         self.assertEqual(self.calendar._find_next_condomino_index("Anna", condomini), 0)
         self.assertEqual(self.calendar._find_next_condomino_index("Unknown", condomini), 0)
+
+
+class TestGarbageBotInitialization(unittest.TestCase):
+    """Verify GarbageBot client initialization lifecycle."""
+
+    @patch("garbage_bot.SheetService")
+    @patch("garbage_bot.ConfigRepository")
+    @patch("garbage_bot.NewAClient")
+    def test_single_client_instantiation(self, mock_client_cls, mock_repo_cls, mock_sheet_cls):
+        """Verify NewAClient is instantiated only once during bot initialization."""
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        bot = GarbageBot()
+
+        # Ensure NewAClient was only called once, avoiding duplicate FFI allocations
+        self.assertEqual(mock_client_cls.call_count, 1)
+        self.assertIsNotNone(bot.client)
+        self.assertTrue(mock_client.event.qr.called)
 
 
 if __name__ == "__main__":

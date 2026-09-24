@@ -591,7 +591,7 @@ class CalendarService:
 class GarbageBot:
     def __init__(self):
         self.log = logging.getLogger("GarbageBot")
-        self.client = NewAClient(config.DB_PATH_NEONIZE)
+        self.client: Optional[NewAClient] = None
         self.repo = ConfigRepository(config.DB_PATH_CONFIG)
         self.sheet_service = SheetService(config.CREDENTIALS_FILE)
         self.calendar_service = CalendarService(self.sheet_service)
@@ -628,9 +628,9 @@ class GarbageBot:
 
         # Sfruttiamo il metodo event.qr() esposto dal modulo events di neonize.
         # Questo sostituisce la stampa a schermo con la nostra funzione,
-        # agendo in modo totalmente sincrono e bypassando il blocco di asyncio!
-        def sync_qr_callback(client_instance, data_qr: bytes):
-            self.log.warning("⚠️ QR Nativo intercettato! Lancio invio Telegram...")
+        # agendo in modo asincrono per l'Event Manager di Neonize.
+        async def sync_qr_callback(client_instance, data_qr: bytes):
+            self.log.warning("QR Nativo intercettato! Lancio invio Telegram...")
             # data_qr ci arriva come bytes, lo decodifichiamo in stringa
             qr_string = data_qr.decode('utf-8')
             
@@ -640,9 +640,9 @@ class GarbageBot:
         try:
             # Agganciamo la funzione
             self.client.event.qr(sync_qr_callback)
-            self.log.info("✅ Sniffer QR nativo agganciato con successo all'Event Manager.")
+            self.log.info("Sniffer QR nativo agganciato con successo all'Event Manager.")
         except Exception as e:
-            self.log.error(f"❌ Impossibile agganciare event.qr: {e}")
+            self.log.error(f"Impossibile agganciare event.qr: {e}")
 
         try:
             # Accontentiamo il wrapper asincrono con una coroutine fittizia

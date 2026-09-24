@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
 # Copia i requisiti e installali
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir --upgrade neonize
+RUN pip install --no-cache-dir --upgrade --force-reinstall "neonize>=0.5.2"
 
 # Copia il codice dell'applicazione
 COPY . .

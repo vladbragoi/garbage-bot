@@ -1,6 +1,6 @@
 gspread
 oauth2client
-neonize
+neonize>=0.5.2
 python-magic
 google-api-python-client
 xhtml2pdf
